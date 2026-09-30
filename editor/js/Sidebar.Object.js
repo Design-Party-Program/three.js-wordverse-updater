@@ -568,7 +568,7 @@ function SidebarObject( editor ) {
 		objectVideoTexLabel.setValue( videoUrl.split( '/' ).pop() );
 		var code =
 			's0.initVideo("' + videoUrl + '")\n' +
-			'src(hydraInstance.synth.s0).rotate(Math.PI).out(hydraInstance.synth.o0)';
+			'src(s0).rotate(Math.PI).out(o0)';
 		objectHydraScript.setValue( code );
 		_applyHydraTexture( object, code, videoUrl );
 	}
@@ -618,8 +618,10 @@ function SidebarObject( editor ) {
 				var hydraInstance = new window.Hydra( {
 					detectAudio: false, makeGlobal: false, canvas: hydraCanvas } );
 				await new Promise( function ( r ) { setTimeout( r, 150 ); } );
+				var synthKeys = Object.keys( hydraInstance.synth );
+				var synthValues = synthKeys.map( function ( k ) { return hydraInstance.synth[ k ]; } );
 				code.split( /\r?\n/ ).filter( function ( l ) { return l.trim(); } ).forEach( function ( line ) {
-					try { eval( 'hydraInstance.synth.' + line.trim() ); } // eslint-disable-line no-eval
+					try { new Function( synthKeys.join( ',' ), line.trim() ).apply( null, synthValues ); } // eslint-disable-line no-new-func
 					catch ( e ) { console.warn( 'Hydra eval:', line, e ); }
 				} );
 				var tex = new THREE.CanvasTexture( hydraCanvas );
