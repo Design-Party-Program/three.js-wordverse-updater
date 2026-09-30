@@ -23,7 +23,6 @@ function Strings( config ) {
 			'menubar/file/export/geometry': 'Export Geometry',
 			'menubar/file/export/object': 'Export Object',
 			'menubar/file/export/scene': 'Export Scene',
-			'menubar/file/export/dae': 'Export DAE',
 			'menubar/file/export/drc': 'Export DRC',
 			'menubar/file/export/glb': 'Export GLB',
 			'menubar/file/export/gltf': 'Export GLTF',
@@ -42,7 +41,6 @@ function Strings( config ) {
 			'menubar/edit/center': 'Center',
 			'menubar/edit/clone': 'Clone',
 			'menubar/edit/delete': 'Delete (Del)',
-			'menubar/edit/fixcolormaps': 'Fix Color Maps',
 
 			'menubar/add': 'Add Primitives',
 			'menubar/add/group': 'Group',
@@ -286,7 +284,9 @@ function Strings( config ) {
 			'sidebar/material/alphamap': 'Alpha Map',
 			'sidebar/material/bumpmap': 'Bump Map',
 			'sidebar/material/normalmap': 'Normal Map',
+			'sidebar/material/clearcoatmap': 'Clearcoat Map',
 			'sidebar/material/clearcoatnormalmap': 'Clearcoat Normal Map',
+			'sidebar/material/clearcoatroughnessmap': 'Clearcoat Roughness Map',
 			'sidebar/material/displacementmap': 'Displace Map',
 			'sidebar/material/roughnessmap': 'Rough. Map',
 			'sidebar/material/metalnessmap': 'Metal. Map',
@@ -309,6 +309,7 @@ function Strings( config ) {
 			'sidebar/material/blending': 'Blending',
 			'sidebar/material/opacity': 'Opacity',
 			'sidebar/material/transparent': 'Transparent',
+			'sidebar/material/forcesinglepass': 'Force Single Pass',
 			'sidebar/material/alphatest': 'Alpha Test',
 			'sidebar/material/depthtest': 'Depth Test',
 			'sidebar/material/depthwrite': 'Depth Write',
@@ -327,7 +328,6 @@ function Strings( config ) {
 			'sidebar/project/renderer': 'Renderer',
 			'sidebar/project/antialias': 'Antialias',
 			'sidebar/project/shadows': 'Shadows',
-			'sidebar/project/physicallyCorrectLights': 'Physical lights',
 			'sidebar/project/toneMapping': 'Tone mapping',
 			'sidebar/project/materials': 'Materials',
 			'sidebar/project/Assign': 'Assign',
@@ -347,10 +347,6 @@ function Strings( config ) {
 			'sidebar/settings/shortcuts/undo': 'Undo',
 			'sidebar/settings/shortcuts/focus': 'Focus',
 
-			'sidebar/settings/viewport': 'Viewport',
-			'sidebar/settings/viewport/grid': 'Grid',
-			'sidebar/settings/viewport/helpers': 'Helpers',
-
 			'sidebar/history': 'History',
 			'sidebar/history/persistent': 'persistent',
 
@@ -358,6 +354,9 @@ function Strings( config ) {
 			'toolbar/rotate': 'Rotate',
 			'toolbar/scale': 'Scale',
 			'toolbar/local': 'Local',
+
+			'viewport/controls/grid': 'Grid',
+			'viewport/controls/helpers': 'Helpers',
 
 			'viewport/info/objects': 'Objects',
 			'viewport/info/vertices': 'Vertices',
@@ -374,7 +373,6 @@ function Strings( config ) {
 			'menubar/file/export/geometry': 'Exporter Geometrie',
 			'menubar/file/export/object': 'Exporter Objet',
 			'menubar/file/export/scene': 'Exporter Scene',
-			'menubar/file/export/dae': 'Exporter DAE',
 			'menubar/file/export/drc': 'Exporter DRC',
 			'menubar/file/export/glb': 'Exporter GLB',
 			'menubar/file/export/gltf': 'Exporter GLTF',
@@ -393,7 +391,6 @@ function Strings( config ) {
 			'menubar/edit/center': 'Center',
 			'menubar/edit/clone': 'Cloner',
 			'menubar/edit/delete': 'Supprimer (Supp)',
-			'menubar/edit/fixcolormaps': 'Correction des couleurs',
 
 			'menubar/add': 'Ajouter',
 			'menubar/add/group': 'Groupe',
@@ -660,6 +657,7 @@ function Strings( config ) {
 			'sidebar/material/blending': 'Mélange',
 			'sidebar/material/opacity': 'Opacité',
 			'sidebar/material/transparent': 'Transparence',
+			'sidebar/material/forcesinglepass': 'Force Single Pass',
 			'sidebar/material/alphatest': 'Test de transparence',
 			'sidebar/material/depthtest': 'Depth Test',
 			'sidebar/material/depthwrite': 'Depth Write',
@@ -678,7 +676,6 @@ function Strings( config ) {
 			'sidebar/project/renderer': 'Rendus',
 			'sidebar/project/antialias': 'Anticrénelage',
 			'sidebar/project/shadows': 'Ombres',
-			'sidebar/project/physicallyCorrectLights': 'Physical lights',
 			'sidebar/project/toneMapping': 'Mappage des nuances',
 			'sidebar/project/materials': 'Matériaux',
 			'sidebar/project/Assign': 'Attribuer',
@@ -698,10 +695,6 @@ function Strings( config ) {
 			'sidebar/settings/shortcuts/undo': 'Annuler',
 			'sidebar/settings/shortcuts/focus': 'Focus',
 
-			'sidebar/settings/viewport': 'Viewport',
-			'sidebar/settings/viewport/grid': 'Grille',
-			'sidebar/settings/viewport/helpers': 'Helpers',
-
 			'sidebar/history': 'Historique',
 			'sidebar/history/persistent': 'permanent',
 
@@ -709,6 +702,9 @@ function Strings( config ) {
 			'toolbar/rotate': 'Rotation',
 			'toolbar/scale': 'Échelle',
 			'toolbar/local': 'Local',
+
+			'viewport/controls/grid': 'Grille',
+			'viewport/controls/helpers': 'Helpers',
 
 			'viewport/info/objects': 'Objets',
 			'viewport/info/vertices': 'Sommets',
@@ -725,7 +721,6 @@ function Strings( config ) {
 			'menubar/file/export/geometry': '导出几何体',
 			'menubar/file/export/object': '导出物体',
 			'menubar/file/export/scene': '导出场景',
-			'menubar/file/export/dae': '导出DAE',
 			'menubar/file/export/drc': '导出DRC',
 			'menubar/file/export/glb': '导出GLB',
 			'menubar/file/export/gltf': '导出GLTF',
@@ -744,7 +739,6 @@ function Strings( config ) {
 			'menubar/edit/center': '居中',
 			'menubar/edit/clone': '拷贝',
 			'menubar/edit/delete': '删除 (Del)',
-			'menubar/edit/fixcolormaps': '修复颜色贴图',
 
 			'menubar/add': '添加',
 			'menubar/add/group': '组',
@@ -1011,6 +1005,7 @@ function Strings( config ) {
 			'sidebar/material/blending': '混合',
 			'sidebar/material/opacity': '透明度',
 			'sidebar/material/transparent': '透明性',
+			'sidebar/material/forcesinglepass': 'Force Single Pass',
 			'sidebar/material/alphatest': 'α测试',
 			'sidebar/material/depthtest': '深度测试',
 			'sidebar/material/depthwrite': '深度缓冲',
@@ -1029,7 +1024,6 @@ function Strings( config ) {
 			'sidebar/project/renderer': '渲染器',
 			'sidebar/project/antialias': '抗锯齿',
 			'sidebar/project/shadows': '阴影',
-			'sidebar/project/physicallyCorrectLights': '物理灯',
 			'sidebar/project/toneMapping': '色调映射',
 			'sidebar/project/materials': '材质',
 			'sidebar/project/Assign': '应用',
@@ -1049,10 +1043,6 @@ function Strings( config ) {
 			'sidebar/settings/shortcuts/undo': '撤销',
 			'sidebar/settings/shortcuts/focus': '聚焦',
 
-			'sidebar/settings/viewport': '视窗',
-			'sidebar/settings/viewport/grid': '网格',
-			'sidebar/settings/viewport/helpers': '辅助',
-
 			'sidebar/history': '历史记录',
 			'sidebar/history/persistent': '本地存储',
 
@@ -1060,6 +1050,9 @@ function Strings( config ) {
 			'toolbar/rotate': '旋转',
 			'toolbar/scale': '缩放',
 			'toolbar/local': '本地',
+
+			'viewport/controls/grid': '网格',
+			'viewport/controls/helpers': '辅助',
 
 			'viewport/info/objects': '物体',
 			'viewport/info/vertices': '顶点',

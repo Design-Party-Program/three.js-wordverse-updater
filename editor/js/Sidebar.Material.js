@@ -231,10 +231,20 @@ function SidebarMaterial( editor ) {
 	const materialNormalMap = new SidebarMaterialMapProperty( editor, 'normalMap', strings.getKey( 'sidebar/material/normalmap' ) );
 	container.add( materialNormalMap );
 
+	// clearcoat map
+
+	const materialClearcoatMap = new SidebarMaterialMapProperty( editor, 'clearcoatMap', strings.getKey( 'sidebar/material/clearcoatmap' ) );
+	container.add( materialClearcoatMap );
+
 	// clearcoat normal map
 
 	const materialClearcoatNormalMap = new SidebarMaterialMapProperty( editor, 'clearcoatNormalMap', strings.getKey( 'sidebar/material/clearcoatnormalmap' ) );
 	container.add( materialClearcoatNormalMap );
+
+	// clearcoat roughness map
+
+	const materialClearcoatRoughnessMap = new SidebarMaterialMapProperty( editor, 'clearcoatRoughnessMap', strings.getKey( 'sidebar/material/clearcoatroughnessmap' ) );
+	container.add( materialClearcoatRoughnessMap );
 
 	// displacement map
 
@@ -306,8 +316,7 @@ function SidebarMaterial( editor ) {
 	const materialSideOptions = {
 		0: 'Front',
 		1: 'Back',
-		2: 'Double',
-		3: 'TwoPassDouble'
+		2: 'Double'
 	};
 
 	const materialSide = new SidebarMaterialConstantProperty( editor, 'side', strings.getKey( 'sidebar/material/side' ), materialSideOptions );
@@ -351,6 +360,11 @@ function SidebarMaterial( editor ) {
 
 	const materialTransparent = new SidebarMaterialBooleanProperty( editor, 'transparent', strings.getKey( 'sidebar/material/transparent' ) );
 	container.add( materialTransparent );
+
+	// forceSinglePass
+
+	const materialForceSinglePass = new SidebarMaterialBooleanProperty( editor, 'forceSinglePass', strings.getKey( 'sidebar/material/forcesinglepass' ) );
+	container.add( materialForceSinglePass );
 
 	// alpha test
 
@@ -407,7 +421,11 @@ function SidebarMaterial( editor ) {
 
 		currentMaterialSlot = parseInt( materialSlotSelect.getValue() );
 
-		if ( currentMaterialSlot !== previousSelectedSlot ) refreshUI();
+		if ( currentMaterialSlot !== previousSelectedSlot ) {
+
+			editor.signals.materialChanged.dispatch( currentObject, currentMaterialSlot );
+
+		}
 
 		let material = editor.getObjectMaterial( currentObject, currentMaterialSlot );
 

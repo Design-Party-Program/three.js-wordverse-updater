@@ -44,6 +44,7 @@ function Editor() {
 		spaceChanged: new Signal(),
 		rendererCreated: new Signal(),
 		rendererUpdated: new Signal(),
+		rendererDetectKTX2Support: new Signal(),
 
 		sceneBackgroundChanged: new Signal(),
 		sceneEnvironmentChanged: new Signal(),
@@ -85,9 +86,11 @@ function Editor() {
 		showGridChanged: new Signal(),
 		showHelpersChanged: new Signal(),
 		refreshSidebarObject3D: new Signal(),
+		refreshSidebarEnvironment: new Signal(),
 		historyChanged: new Signal(),
 
 		viewportCameraChanged: new Signal(),
+		viewportShadingChanged: new Signal(),
 
 		intersectionsDetected: new Signal(),
 
@@ -122,7 +125,9 @@ function Editor() {
 	this.helpers = {};
 
 	this.cameras = {};
+
 	this.viewportCamera = this.camera;
+	this.viewportShading = 'default';
 
   // mqtt addition
   this.sendMQTT = () => { console.log('mqtt not initiated yet') };
@@ -140,6 +145,8 @@ Editor.prototype = {
 		this.scene.background = scene.background;
 		this.scene.environment = scene.environment;
 		this.scene.fog = scene.fog;
+		this.scene.backgroundBlurriness = scene.backgroundBlurriness;
+		this.scene.backgroundIntensity = scene.backgroundIntensity;
 
 		this.scene.userData = JSON.parse( JSON.stringify( scene.userData ) );
 
@@ -628,7 +635,7 @@ Editor.prototype = {
 
 					helper = new THREE.SkeletonHelper( object.skeleton.bones[ 0 ] );
 
-				} else if ( object.isBone === true && object.parent?.isBone !== true ) {
+				} else if ( object.isBone === true && object.parent && object.parent.isBone !== true ) {
 
 					helper = new THREE.SkeletonHelper( object );
 
@@ -800,6 +807,13 @@ Editor.prototype = {
 
 	},
 
+	setViewportShading: function ( value ) {
+
+		this.viewportShading = value;
+		this.signals.viewportShadingChanged.dispatch();
+
+	},
+
 	//
 
 	select: function ( object ) {
@@ -913,6 +927,13 @@ Editor.prototype = {
 
 		this.setScene( await loader.parseAsync( json.scene ) );
 
+		if ( json.environment === 'ModelViewer' ) {
+
+			this.signals.sceneEnvironmentChanged.dispatch( json.environment );
+			this.signals.refreshSidebarEnvironment.dispatch();
+
+		}
+
 	},
 
 	toJSON: function () {
@@ -934,6 +955,16 @@ Editor.prototype = {
 
 		}
 
+		// honor modelviewer environment
+
+		let environment = null;
+
+		if ( this.scene.environment !== null && this.scene.environment.isRenderTargetTexture === true ) {
+
+			environment = 'ModelViewer';
+
+		}
+
 		//
 
 		return {
@@ -943,14 +974,14 @@ Editor.prototype = {
 				shadows: this.config.getKey( 'project/renderer/shadows' ),
 				shadowType: this.config.getKey( 'project/renderer/shadowType' ),
 				vr: this.config.getKey( 'project/vr' ),
-				physicallyCorrectLights: this.config.getKey( 'project/renderer/physicallyCorrectLights' ),
 				toneMapping: this.config.getKey( 'project/renderer/toneMapping' ),
 				toneMappingExposure: this.config.getKey( 'project/renderer/toneMappingExposure' )
 			},
-			camera: this.camera.toJSON(),
+			camera: this.viewportCamera.toJSON(),
 			scene: this.scene.toJSON(),
 			scripts: this.scripts,
-			history: this.history.toJSON()
+			history: this.history.toJSON(),
+			environment: environment
 
 		};
 

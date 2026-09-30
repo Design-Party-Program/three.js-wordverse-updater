@@ -24,6 +24,8 @@ const assets = [
 	'../examples/jsm/libs/draco/gltf/draco_decoder.wasm',
 	'../examples/jsm/libs/draco/gltf/draco_wasm_wrapper.js',
 
+	'../examples/jsm/libs/meshopt_decoder.module.js',
+
 	'../examples/jsm/libs/motion-controllers.module.js',
 
 	'../examples/jsm/libs/rhino3dm/rhino3dm.wasm',
@@ -37,9 +39,7 @@ const assets = [
 	'../examples/jsm/loaders/FBXLoader.js',
 	'../examples/jsm/loaders/GLTFLoader.js',
 	'../examples/jsm/loaders/KMZLoader.js',
-	'../examples/jsm/loaders/IFCLoader.js',
-	'../examples/jsm/loaders/ifc/web-ifc-api.js',
-	'../examples/jsm/loaders/ifc/web-ifc.wasm',
+	'../examples/jsm/loaders/KTX2Loader.js',
 	'../examples/jsm/loaders/MD2Loader.js',
 	'../examples/jsm/loaders/OBJLoader.js',
 	'../examples/jsm/loaders/MTLLoader.js',
@@ -64,7 +64,6 @@ const assets = [
 
 	'../examples/jsm/environments/RoomEnvironment.js',
 
-	'../examples/jsm/exporters/ColladaExporter.js',
 	'../examples/jsm/exporters/DRACOExporter.js',
 	'../examples/jsm/exporters/GLTFExporter.js',
 	'../examples/jsm/exporters/OBJExporter.js',
@@ -73,8 +72,6 @@ const assets = [
 	'../examples/jsm/exporters/USDZExporter.js',
 
 	'../examples/jsm/helpers/VertexNormalsHelper.js',
-
-	'../examples/jsm/geometries/TeapotGeometry.js',
 
 	'../examples/jsm/webxr/VRButton.js',
 	'../examples/jsm/webxr/XRControllerModelFactory.js',
@@ -90,7 +87,6 @@ const assets = [
 	'./js/libs/codemirror/mode/javascript.js',
 	'./js/libs/codemirror/mode/glsl.js',
 
-	'./js/libs/es-module-shims.js',
 	'./js/libs/esprima.js',
 	'./js/libs/ffmpeg.min.js',
 	'./js/libs/jsonlint.js',
@@ -153,7 +149,6 @@ const assets = [
 	'./js/Sidebar.Settings.js',
 	'./js/Sidebar.Settings.History.js',
 	'./js/Sidebar.Settings.Shortcuts.js',
-	'./js/Sidebar.Settings.Viewport.js',
 	'./js/Sidebar.Properties.js',
 	'./js/Sidebar.Object.js',
 	'./js/Sidebar.Geometry.js',
@@ -176,7 +171,6 @@ const assets = [
 	'./js/Sidebar.Geometry.TorusGeometry.js',
 	'./js/Sidebar.Geometry.TorusKnotGeometry.js',
 	'./js/Sidebar.Geometry.TubeGeometry.js',
-	'./js/Sidebar.Geometry.TeapotGeometry.js',
 	'./js/Sidebar.Material.js',
 	'./js/Sidebar.Material.BooleanProperty.js',
 	'./js/Sidebar.Material.ColorProperty.js',
@@ -189,7 +183,7 @@ const assets = [
 	'./js/Strings.js',
 	'./js/Toolbar.js',
 	'./js/Viewport.js',
-	'./js/Viewport.Camera.js',
+	'./js/Viewport.Controls.js',
 	'./js/Viewport.Info.js',
 	'./js/Viewport.Selector.js',
 	'./js/Viewport.ViewHelper.js',
@@ -270,8 +264,8 @@ async function networkFirst( request ) {
 		if ( request.url.endsWith( 'editor/' ) || request.url.endsWith( 'editor/index.html' ) ) { // copied from coi-serviceworker
 
 			const newHeaders = new Headers( response.headers );
-			newHeaders.set( "Cross-Origin-Embedder-Policy", "require-corp" );
-			newHeaders.set( "Cross-Origin-Opener-Policy", "same-origin" );
+			newHeaders.set( 'Cross-Origin-Embedder-Policy', 'require-corp' );
+			newHeaders.set( 'Cross-Origin-Opener-Policy', 'same-origin' );
 
 			response = new Response( response.body, { status: response.status, statusText: response.statusText, headers: newHeaders } );
 

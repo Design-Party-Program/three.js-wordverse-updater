@@ -21,6 +21,17 @@
 		and DI.
 		</p>
 
+		<h2>Import</h2>
+
+		<p>
+			[name] is an add-on, and must be imported explicitly.
+			See [link:#manual/introduction/Installation Installation / Addons].
+		</p>
+
+		<code>
+			import { EXRExporter } from 'three/addons/exporters/EXRExporter.js';
+		</code>
+
 		<h2>Code Example</h2>
 
 		<code>
@@ -65,6 +76,15 @@ ZIPS_COMPRESSION
 		</p>
 		<p>
 		Generates a .exr output from the input render target.
+		</p>
+
+		<h3>[method:null parse]( [param:DataTexture dataTexture], [param:Object options] )</h3>
+		<p>
+		[page:Function dataTexture] — DataTexture containing data used for exporting EXR image.<br /> 
+		[page:Options options] — Export options (details above).<br />
+		</p>
+		<p>
+		Generates a .exr output from the input data texture.
 		</p>
 
 		<h2>Source</h2>

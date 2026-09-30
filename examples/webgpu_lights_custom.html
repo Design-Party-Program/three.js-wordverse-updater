@@ -11,8 +11,6 @@
 			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> WebGPU - Custom Lighting Model
 		</div>
 
-		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
 		<script type="importmap">
 			{
 				"imports": {
@@ -26,12 +24,24 @@
 		<script type="module">
 
 			import * as THREE from 'three';
-			import * as Nodes from 'three/nodes';
+			import { color, lights, toneMapping, MeshStandardNodeMaterial, PointsNodeMaterial, LightingModel } from 'three/nodes';
 
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
+			import WebGL from 'three/addons/capabilities/WebGL.js';
+
 			import WebGPURenderer from 'three/addons/renderers/webgpu/WebGPURenderer.js';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+			class CustomLightingModel extends LightingModel {
+
+				direct( { lightColor, reflectedLight }, stack ) {
+
+					reflectedLight.directDiffuse.addAssign( lightColor );
+
+				}
+
+			}
 
 			let camera, scene, renderer;
 
@@ -41,11 +51,11 @@
 
 			function init() {
 
-				if ( WebGPU.isAvailable() === false ) {
+				if ( WebGPU.isAvailable() === false && WebGL.isWebGL2Available() === false ) {
 
 					document.body.appendChild( WebGPU.getErrorMessage() );
 
-					throw new Error( 'No WebGPU support' );
+					throw new Error( 'No WebGPU or WebGL2 support' );
 
 				}
 
@@ -61,9 +71,9 @@
 
 				const addLight = ( hexColor, intensity = 2, distance = 1 ) => {
 
-					const material = new Nodes.MeshStandardNodeMaterial();
-					material.colorNode = new Nodes.ConstNode( new THREE.Color( hexColor ) );
-					material.lightsNode = new Nodes.LightsNode(); // ignore scene lights
+					const material = new MeshStandardNodeMaterial();
+					material.colorNode = color( hexColor );
+					material.lightsNode = lights(); // ignore scene lights
 
 					const mesh = new THREE.Mesh( sphereGeometry, material );
 
@@ -82,7 +92,7 @@
 
 				//light nodes ( selective lights )
 
-				const allLightsNode = new Nodes.LightsNode().fromLights( [ light1, light2, light3 ] );
+				const allLightsNode = lights( [ light1, light2, light3 ] );
 
 				// points
 
@@ -96,19 +106,12 @@
 				}
 
 				const geometryPoints = new THREE.BufferGeometry().setFromPoints( points );
-				const materialPoints = new Nodes.PointsNodeMaterial();
+				const materialPoints = new PointsNodeMaterial();
 
 				// custom lighting model
 
-				const customLightingModel = new Nodes.ShaderNode( ( inputs ) => {
-
-					const { lightColor, reflectedLight } = inputs;
-
-					reflectedLight.directDiffuse.add( lightColor );
-
-				} );
-
-				const lightingModelContext = new Nodes.ContextNode( allLightsNode, { lightingModelNode: { direct: customLightingModel } } );
+				const lightingModel = new CustomLightingModel();
+				const lightingModelContext = allLightsNode.context( { lightingModel } );
 
 				materialPoints.lightsNode = lightingModelContext;
 
@@ -119,12 +122,11 @@
 
 				//
 
-				renderer = new WebGPURenderer();
+				renderer = new WebGPURenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.setAnimationLoop( animate );
-				renderer.toneMappingNode = new Nodes.ToneMappingNode( THREE.LinearToneMapping, 1 );
-				renderer.outputEncoding = THREE.sRGBEncoding;
+				renderer.toneMappingNode = toneMapping( THREE.LinearToneMapping, 1 );
 				document.body.appendChild( renderer.domElement );
 
 				// controls

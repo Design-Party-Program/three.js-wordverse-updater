@@ -105,7 +105,13 @@ function Loader( editor ) {
 					loader.setLibraryPath( '../examples/jsm/libs/rhino3dm/' );
 					loader.parse( contents, function ( object ) {
 
+						object.name = filename;
+
 						editor.execute( new AddObjectCommand( editor, object ) );
+
+					}, function ( error ) {
+
+						console.error( error )
 
 					} );
 
@@ -212,7 +218,7 @@ function Loader( editor ) {
 
 					const loader = new DRACOLoader();
 					loader.setDecoderPath( '../examples/jsm/libs/draco/' );
-					loader.decodeDracoFile( contents, function ( geometry ) {
+					loader.parse( contents, function ( geometry ) {
 
 						let object;
 
@@ -277,14 +283,8 @@ function Loader( editor ) {
 
 					const contents = event.target.result;
 
-					const { DRACOLoader } = await import( 'three/addons/loaders/DRACOLoader.js' );
-					const { GLTFLoader } = await import( 'three/addons/loaders/GLTFLoader.js' );
+					const loader = await createGLTFLoader();
 
-					const dracoLoader = new DRACOLoader();
-					dracoLoader.setDecoderPath( '../examples/jsm/libs/draco/gltf/' );
-
-					const loader = new GLTFLoader();
-					loader.setDRACOLoader( dracoLoader );
 					loader.parse( contents, '', function ( result ) {
 
 						const scene = result.scene;
@@ -292,6 +292,9 @@ function Loader( editor ) {
 
 						scene.animations.push( ...result.animations );
 						editor.execute( new AddObjectAndSetMetaCommand( editor, scene, fileMeta ) );
+
+						loader.dracoLoader.dispose();
+						loader.ktx2Loader.dispose();
 
 					} );
 
@@ -310,24 +313,14 @@ function Loader( editor ) {
 
 					const contents = event.target.result;
 
-					let loader;
-
 					if ( isGLTF1( contents ) ) {
 
 						alert( 'Import of glTF asset not possible. Only versions >= 2.0 are supported. Please try to upgrade the file to glTF 2.0 using glTF-Pipeline.' );
-
-					} else {
-
-						const { DRACOLoader } = await import( 'three/addons/loaders/DRACOLoader.js' );
-						const { GLTFLoader } = await import( 'three/addons/loaders/GLTFLoader.js' );
-
-						const dracoLoader = new DRACOLoader();
-						dracoLoader.setDecoderPath( '../examples/jsm/libs/draco/gltf/' );
-
-						loader = new GLTFLoader( manager );
-						loader.setDRACOLoader( dracoLoader );
+						return;
 
 					}
+
+					const loader = await createGLTFLoader( manager );
           console.log("texture path", path);
 					loader.parse( contents, path, function ( result ) {
 
@@ -337,6 +330,9 @@ function Loader( editor ) {
 						scene.animations.push( ...result.animations );
 						//editor.execute( new AddObjectCommand( editor, scene ) );
 						editor.execute( new AddObjectAndSetMetaCommand( editor, scene, fileMeta ) );
+
+						loader.dracoLoader.dispose();
+						loader.ktx2Loader.dispose();
 
 					} );
 
@@ -458,7 +454,7 @@ function Loader( editor ) {
 
 					const loader = new LDrawLoader();
 					loader.setPath( '../../examples/models/ldraw/officialLibrary/' );
-					loader.parse( event.target.result, undefined, function ( group ) {
+					loader.parse( event.target.result, function ( group ) {
 
 						group.name = filename;
 						// Convert from LDraw coordinates: rotate 180 degrees around OX
@@ -1765,14 +1761,7 @@ function Loader( editor ) {
 
 				{
 
-					const { DRACOLoader } = await import( 'three/addons/loaders/DRACOLoader.js' );
-					const { GLTFLoader } = await import( 'three/addons/loaders/GLTFLoader.js' );
-
-					const dracoLoader = new DRACOLoader();
-					dracoLoader.setDecoderPath( '../examples/jsm/libs/draco/gltf/' );
-
-					const loader = new GLTFLoader();
-					loader.setDRACOLoader( dracoLoader );
+					const loader = await createGLTFLoader();
 
 					loader.parse( file.buffer, '', function ( result ) {
 
@@ -1780,6 +1769,9 @@ function Loader( editor ) {
 
 						scene.animations.push( ...result.animations );
 						editor.execute( new AddObjectAndSetMetaCommand( editor, scene, fileMeta ) );
+
+						loader.dracoLoader.dispose();
+						loader.ktx2Loader.dispose();
 
 					} );
 
@@ -1791,14 +1783,7 @@ function Loader( editor ) {
 
 				{
 
-					const { DRACOLoader } = await import( 'three/addons/loaders/DRACOLoader.js' );
-					const { GLTFLoader } = await import( 'three/addons/loaders/GLTFLoader.js' );
-
-					const dracoLoader = new DRACOLoader();
-					dracoLoader.setDecoderPath( '../examples/jsm/libs/draco/gltf/' );
-
-					const loader = new GLTFLoader( manager );
-					loader.setDRACOLoader( dracoLoader );
+					const loader = await createGLTFLoader( manager );
           console.log("texture path", path);
 					loader.parse( strFromU8( file ), path, function ( result ) {
 
@@ -1806,6 +1791,9 @@ function Loader( editor ) {
 
 						scene.animations.push( ...result.animations );
 						editor.execute( new AddObjectAndSetMetaCommand( editor, scene, fileMeta ) );
+
+						loader.dracoLoader.dispose();
+						loader.ktx2Loader.dispose();
 
 					} );
 
@@ -1819,38 +1807,27 @@ function Loader( editor ) {
 
 	}
 
-	function isGLTF1( contents ) {
+	async function createGLTFLoader( manager ) {
 
-		let resultContent;
+		const { GLTFLoader } = await import( 'three/addons/loaders/GLTFLoader.js' );
+		const { DRACOLoader } = await import( 'three/addons/loaders/DRACOLoader.js' );
+		const { KTX2Loader } = await import( 'three/addons/loaders/KTX2Loader.js' );
+		const { MeshoptDecoder } = await import( 'three/addons/libs/meshopt_decoder.module.js' );
 
-		if ( typeof contents === 'string' ) {
+		const dracoLoader = new DRACOLoader();
+		dracoLoader.setDecoderPath( '../examples/jsm/libs/draco/gltf/' );
 
-			// contents is a JSON string
-			resultContent = contents;
+		const ktx2Loader = new KTX2Loader();
+		ktx2Loader.setTranscoderPath( '../examples/jsm/libs/basis/' );
 
-		} else {
+		editor.signals.rendererDetectKTX2Support.dispatch( ktx2Loader );
 
-			const magic = THREE.LoaderUtils.decodeText( new Uint8Array( contents, 0, 4 ) );
+		const loader = new GLTFLoader( manager );
+		loader.setDRACOLoader( dracoLoader );
+		loader.setKTX2Loader( ktx2Loader );
+		loader.setMeshoptDecoder( MeshoptDecoder );
 
-			if ( magic === 'glTF' ) {
-
-				// contents is a .glb file; extract the version
-				const version = new DataView( contents ).getUint32( 4, true );
-
-				return version < 2;
-
-			} else {
-
-				// contents is a .gltf file
-				resultContent = THREE.LoaderUtils.decodeText( new Uint8Array( contents ) );
-
-			}
-
-		}
-
-		const json = JSON.parse( resultContent );
-
-		return ( json.asset != undefined && json.asset.version[ 0 ] < 2 );
+		return loader;
 
 	}
 

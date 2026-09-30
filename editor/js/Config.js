@@ -14,7 +14,6 @@ function Config() {
 		'project/renderer/antialias': false,
 		'project/renderer/shadows': false,
 		'project/renderer/shadowType': 1, // PCF
-		'project/renderer/physicallyCorrectLights': false,
 		'project/renderer/toneMapping': 0, // NoToneMapping
 		'project/renderer/toneMappingExposure': 1,
 

@@ -6,15 +6,11 @@
     <meta name="twitter:site" content="@threejs">
     <meta name="twitter:title" content="Three.js – Fundamentals">
     <meta property="og:image" content="https://threejs.org/files/share.png">
-    <link rel="shortcut icon" href="/files/favicon_white.ico" media="(prefers-color-scheme: dark)">
-    <link rel="shortcut icon" href="/files/favicon.ico" media="(prefers-color-scheme: light)">
+    <link rel="shortcut icon" href="../../files/favicon_white.ico" media="(prefers-color-scheme: dark)">
+    <link rel="shortcut icon" href="../../files/favicon.ico" media="(prefers-color-scheme: light)">
 
-    <link rel="stylesheet" href="/manual/resources/lesson.css">
-    <link rel="stylesheet" href="/manual/resources/lang.css">
-<!-- Import maps polyfill -->
-<!-- Remove this when import maps will be widely supported -->
-<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
+    <link rel="stylesheet" href="../resources/lesson.css">
+    <link rel="stylesheet" href="../resources/lang.css">
 <script type="importmap">
 {
   "imports": {
@@ -101,7 +97,7 @@ the end of <a href="scenegraph.html">the article on scenegraphs</a>.</p>
 <li><p><a href="/docs/#api/en/materials/Material"><code class="notranslate" translate="no">Material</code></a> objects represent
 <a href="materials.html">the surface properties used to draw geometry</a>
 including things like the color to use and how shiny it is. A <a href="/docs/#api/en/materials/Material"><code class="notranslate" translate="no">Material</code></a> can also
-reference one or more <a href="/docs/#api/en/textures/Texture"><code class="notranslate" translate="no">Texture</code></a> objects which can be used, for example, 
+reference one or more <a href="/docs/#api/en/textures/Texture"><code class="notranslate" translate="no">Texture</code></a> objects which can be used, for example,
 to wrap an image onto the surface of a geometry.</p>
 </li>
 <li><p><a href="/docs/#api/en/textures/Texture"><code class="notranslate" translate="no">Texture</code></a> objects generally represent images either <a href="textures.html">loaded from image files</a>,
@@ -135,16 +131,13 @@ import * as THREE from 'three';
 
 +function main() {
 +  const canvas = document.querySelector('#c');
-+  const renderer = new THREE.WebGLRenderer({canvas});
++  const renderer = new THREE.WebGLRenderer({antialias: true, canvas});
 +  ...
 &lt;/script&gt;
 </pre>
 <p>After we look up the canvas we create a <a href="/docs/#api/en/renderers/WebGLRenderer"><code class="notranslate" translate="no">WebGLRenderer</code></a>. The renderer
 is the thing responsible for actually taking all the data you provide
-and rendering it to the canvas. In the past there have been other renderers
-like <code class="notranslate" translate="no">CSSRenderer</code>, a <code class="notranslate" translate="no">CanvasRenderer</code> and in the future there may be a
-<code class="notranslate" translate="no">WebGL2Renderer</code> or <code class="notranslate" translate="no">WebGPURenderer</code>. For now there's the <a href="/docs/#api/en/renderers/WebGLRenderer"><code class="notranslate" translate="no">WebGLRenderer</code></a>
-that uses WebGL to render 3D to the canvas.</p>
+and rendering it to the canvas.</p>
 <p>Note there are some esoteric details here. If you don't pass a canvas
 into three.js it will create one for you but then you have to add it
 to your document. Where to add it may change depending on your use case
@@ -276,7 +269,7 @@ add some lighting so let's add a light. There are many kinds of lights in
 three.js which we'll go over in <a href="lights.html">a future article</a>. For now let's create a directional light.</p>
 <pre class="prettyprint showlinemods notranslate lang-js" translate="no">{
   const color = 0xFFFFFF;
-  const intensity = 1;
+  const intensity = 3;
   const light = new THREE.DirectionalLight(color, intensity);
   light.position.set(-1, 2, 4);
   scene.add(light);
@@ -391,10 +384,6 @@ Notice <code class="notranslate" translate="no">'three'</code> specifier there. 
 Note that path specifier can start only with <code class="notranslate" translate="no">./</code> or <code class="notranslate" translate="no">../</code>.
 </p>
 <p>
-Import maps are still unsupported in Firefox and Safari, so it is recommended to use <a href="https://github.com/guybedford/es-module-shims">an import maps polyfill</a> like so
-</p>
-<pre class="prettyprint showlinemods notranslate lang-html" translate="no">&lt;script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"&gt;&lt;/script&gt;</pre>
-<p>
 To import addons like <a href="https://github.com/mrdoob/three.js/blob/master/examples/jsm/controls/OrbitControls.js"><code class="notranslate" translate="no">OrbitControls.js</code></a> use the following
 </p>
 <pre class="prettyprint showlinemods notranslate lang-js" translate="no">import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
@@ -417,8 +406,8 @@ You can also use a CDN
 <pre class="prettyprint showlinemods notranslate lang-html" translate="no">&lt;script type="importmap"&gt;
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.147.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.147.0/examples/jsm/"
+    "three": "https://unpkg.com/three@&lt;version&gt;/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@&lt;version&gt;/examples/jsm/"
   }
 }
 &lt;/script&gt;
@@ -426,8 +415,7 @@ You can also use a CDN
 <p>
 To conclude, the recommended way of using three.js is
 </p>
-<pre class="prettyprint showlinemods notranslate lang-html" translate="no">&lt;script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"&gt;&lt;/script&gt;
-
+<pre class="prettyprint showlinemods notranslate lang-html" translate="no">
 &lt;script type="importmap"&gt;
 {
   "imports": {
@@ -454,9 +442,9 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
         </div>
       </div>
     </div>
-  
-  <script src="/manual/resources/prettify.js"></script>
-  <script src="/manual/resources/lesson.js"></script>
+
+  <script src="../resources/prettify.js"></script>
+  <script src="../resources/lesson.js"></script>
 
 
 
