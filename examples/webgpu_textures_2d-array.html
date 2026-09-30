@@ -19,7 +19,8 @@
 			{
 				"imports": {
 					"three": "../build/three.webgpu.js",
-					"three/tsl": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
 					"three/addons/": "./jsm/"
 				}
 			}
@@ -27,7 +28,7 @@
 
 		<script type="module">
 
-			import * as THREE from 'three';
+			import * as THREE from 'three/webgpu';
 			import { texture, uv, time, oscTriangle } from 'three/tsl';
 
 			import Stats from 'three/addons/libs/stats.module.js';

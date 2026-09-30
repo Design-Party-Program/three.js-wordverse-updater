@@ -34,6 +34,7 @@ function ViewportInfo( editor ) {
 	signals.avatarAdded.add( update );
 	signals.objectAdded.add( update );
 	signals.objectRemoved.add( update );
+	signals.objectChanged.add( update );
 	signals.geometryChanged.add( update );
 	signals.sceneRendered.add( updateFrametime );
 
@@ -60,8 +61,15 @@ function ViewportInfo( editor ) {
 				if ( object.isMesh || object.isPoints ) {
 
 					const geometry = object.geometry;
+					const positionAttribute = geometry.attributes.position;
 
-					vertices += geometry.attributes.position.count;
+					// update counts only if vertex data are defined
+
+					if ( positionAttribute !== undefined && positionAttribute !== null ) {
+
+						vertices += positionAttribute.count;
+
+					}
 
 					if ( object.isMesh ) {
 
@@ -69,9 +77,9 @@ function ViewportInfo( editor ) {
 
 							triangles += geometry.index.count / 3;
 
-						} else {
+						} else if ( positionAttribute !== undefined && positionAttribute !== null ) {
 
-							triangles += geometry.attributes.position.count / 3;
+							triangles += positionAttribute.count / 3;
 
 						}
 

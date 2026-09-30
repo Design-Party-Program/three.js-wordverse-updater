@@ -19,7 +19,8 @@
 			{
 				"imports": {
 					"three": "../build/three.webgpu.js",
-					"three/tsl": "../build/three.webgpu.js",
+					"three/webgpu": "../build/three.webgpu.js",
+					"three/tsl": "../build/three.tsl.js",
 					"three/addons/": "./jsm/"
 				}
 			}
@@ -27,7 +28,7 @@
 
 		<script type="module">
 
-			import * as THREE from 'three';
+			import * as THREE from 'three/webgpu';
 			import { pass, mrt, output, emissive, uniform } from 'three/tsl';
 			import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 			import { lensflare } from 'three/addons/tsl/display/LensflareNode.js';
