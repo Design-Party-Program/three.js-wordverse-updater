@@ -5,6 +5,17 @@ function Strings( config ) {
 	const values = {
 
 		en: {
+			'menubar/vrScenes': 'VR Post Types',
+			'menubar/vrScenes/newScene': 'Create New VR Scene',
+      
+			'menubar/models': '3D Models',
+			'menubar/models/newModel': 'Add New Model',
+      
+			'menubar/save': 'Save Scene',
+      
+			'menubar/3dsvg': 'Add 3D SVGs',
+
+			'menubar/wpcomponents': 'Add WP Content Elements',
 
 			'menubar/file': 'File',
 			'menubar/file/new': 'New',
@@ -33,7 +44,7 @@ function Strings( config ) {
 			'menubar/edit/delete': 'Delete (Del)',
 			'menubar/edit/fixcolormaps': 'Fix Color Maps',
 
-			'menubar/add': 'Add',
+			'menubar/add': 'Add Primitives',
 			'menubar/add/group': 'Group',
 			'menubar/add/plane': 'Plane',
 			'menubar/add/box': 'Box',

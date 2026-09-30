@@ -23,7 +23,7 @@ function MenubarEdit( editor ) {
 	container.add( options );
 
 	// Undo
-
+  /*
 	const undo = new UIRow();
 	undo.setClass( 'option' );
 	undo.setTextContent( strings.getKey( 'menubar/edit/undo' ) );
@@ -86,10 +86,10 @@ function MenubarEdit( editor ) {
 
 	// ---
 
-	options.add( new UIHorizontalRule() );
+	options.add( new UIHorizontalRule() );*/
 
 	// Center
-
+  let option = new UIRow(); // fix
 	option = new UIRow();
 	option.setClass( 'option' );
 	option.setTextContent( strings.getKey( 'menubar/edit/center' ) );
@@ -142,6 +142,7 @@ function MenubarEdit( editor ) {
 		if ( object !== null && object.parent !== null ) {
 
 			editor.execute( new RemoveObjectCommand( editor, object ) );
+      this.sendMqtt("removeObject", {uuid: object.uuid});
 
 		}
 

@@ -32,6 +32,7 @@ function Viewport( editor ) {
 
 	let renderer = null;
 	let pmremGenerator = null;
+  let mqtt  
 
 	const camera = editor.camera;
 	const scene = editor.scene;
@@ -116,6 +117,18 @@ function Viewport( editor ) {
 				case 'translate':
 
 					if ( ! objectPositionOnDown.equals( object.position ) ) {
+            
+            editor.sendMqtt(
+              `setObjectPosition`,
+              {
+                "objectName": object.name,
+                "uuid": object.uuid,
+                //"position": object.position,
+                "newPosition": object.position,
+                //"object": object
+              }
+            );
+      
 
 						editor.execute( new SetPositionCommand( editor, object, object.position, objectPositionOnDown ) );
 
@@ -127,6 +140,17 @@ function Viewport( editor ) {
 
 					if ( ! objectRotationOnDown.equals( object.rotation ) ) {
 
+            editor.sendMqtt(
+              `setObjectRotation`,
+              {
+                "objectName": object.name,
+                "uuid": object.uuid,
+                //"position": object.position,
+                "newRotation": object.rotation,
+                //"object": object
+              }
+            );
+      
 						editor.execute( new SetRotationCommand( editor, object, object.rotation, objectRotationOnDown ) );
 
 					}
@@ -136,6 +160,17 @@ function Viewport( editor ) {
 				case 'scale':
 
 					if ( ! objectScaleOnDown.equals( object.scale ) ) {
+
+            editor.sendMqtt(
+              `setObjectScale`,
+              {
+                "objectName": object.name,
+                "uuid": object.uuid,
+                //"position": object.position,
+                "newScale": object.scale,
+                //"object": object
+              }
+            );
 
 						editor.execute( new SetScaleCommand( editor, object, object.scale, objectScaleOnDown ) );
 
@@ -290,7 +325,9 @@ function Viewport( editor ) {
 
 		signals.cameraChanged.dispatch( camera );
 		signals.refreshSidebarObject3D.dispatch( camera );
-
+    editor.sendMqtt(
+      'updateAvatar', {position: camera.position, rotation: camera.rotation }
+    )
 	} );
 	viewHelper.controls = controls;
 

@@ -1,0 +1,100 @@
+/* 
+#menubar {
+	position: absolute;
+	width: 100%;
+	height: 32px;
+	background: #eee;
+	padding: 0;
+	margin: 0;
+	right: 0;
+	top: 0;
+} */
+
+#toolbar {
+	position: absolute;
+	left: 10px;
+	top: 42px;
+	width: 32px;
+	background: #eee;
+	text-align: center;
+}
+
+	#toolbar button, #toolbar input {
+		height: 32px;
+	}
+
+		#toolbar button img {
+      width: 16px;
+			opacity: 0.5;
+		}
+  /* submenu hover behaviour */
+
+	#toolbar > .menu {
+		float: left;
+		cursor: pointer;
+		padding-right: 8px;
+    /*filter: invert(1);*/
+	}
+
+  #toolbar > .menu button img{
+    filter: invert(1);
+  }
+
+	#toolbar > .menu.right {
+		float: right;
+		cursor: auto;
+		padding-right: 0;
+		text-align: right;
+	}
+
+		#toolbar > .menu .title {
+			display: inline-block;
+			color: #888;
+			margin: 0;
+			padding: 8px;
+			line-height: 16px;
+		}
+
+		#toolbar > .menu .options {
+			position: fixed;
+			display: none;
+			padding: 5px 0;
+			background: #222;
+			width: 120px;
+			/*max-height: calc(100% - 80px);*/
+			overflow: auto;
+      margin-top: -32px;
+      margin-left: 32px;
+		}
+
+		#toolbar > .menu:hover .options {
+			display: block;
+		}
+
+			#toolbar > .menu .options hr {
+				border-color: #ddd;
+			}
+
+			#toolbar > .menu .options .option {
+				color: #666;
+				background-color: transparent;
+				padding: 5px 10px;
+				margin: 0 !important;
+			}
+
+				#toolbar > .menu .options .option:hover {
+					color: #fff;
+					background-color: #08f;
+				}
+
+				#toolbar > .menu .options .option:active {
+					color: #666;
+					background: transparent;
+				}
+
+		#toolbar > .menu .options .inactive {
+			color: #bbb;
+			background-color: transparent;
+			padding: 5px 10px;
+			margin: 0 !important;
+		}

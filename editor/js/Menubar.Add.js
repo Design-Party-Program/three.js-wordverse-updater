@@ -38,6 +38,7 @@ function MenubarAdd( editor ) {
 	//
 
 	options.add( new UIHorizontalRule() );
+  /*
 
 	// Box
 
@@ -263,7 +264,6 @@ function MenubarAdd( editor ) {
 
 	} );
 	options.add( option );
-
 	// TorusKnot
 
 	option = new UIRow();
@@ -302,6 +302,8 @@ function MenubarAdd( editor ) {
 
 	} );
 	options.add( option );
+  */
+
 
 	/*
 	// Teapot
@@ -338,23 +340,23 @@ function MenubarAdd( editor ) {
 
 	// AmbientLight
 
-	option = new UIRow();
-	option.setClass( 'option' );
-	option.setTextContent( strings.getKey( 'menubar/add/ambientlight' ) );
-	option.onClick( function () {
+	// option = new UIRow();
+	// option.setClass( 'option' );
+	// option.setTextContent( strings.getKey( 'menubar/add/ambientlight' ) );
+	// option.onClick( function () {
 
-		const color = 0x222222;
+	// 	const color = 0x222222;
 
-		const light = new THREE.AmbientLight( color );
-		light.name = 'AmbientLight';
+	// 	const light = new THREE.AmbientLight( color );
+	// 	light.name = 'AmbientLight';
 
-		editor.execute( new AddObjectCommand( editor, light ) );
+	// 	editor.execute( new AddObjectCommand( editor, light ) );
 
-	} );
-	options.add( option );
+	// } );
+	// options.add( option );
 
 	// DirectionalLight
-
+ /*
 	option = new UIRow();
 	option.setClass( 'option' );
 	option.setTextContent( strings.getKey( 'menubar/add/directionallight' ) );
@@ -437,7 +439,7 @@ function MenubarAdd( editor ) {
 
 	} );
 	options.add( option );
-
+  */
 	//
 
 	options.add( new UIHorizontalRule() );

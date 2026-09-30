@@ -23,7 +23,7 @@ function SidebarSettingsShortcuts( editor ) {
 	headerRow.add( new UIText( strings.getKey( 'sidebar/settings/shortcuts' ).toUpperCase() ) );
 	container.add( headerRow );
 
-	const shortcuts = [ 'translate', 'rotate', 'scale', 'undo', 'focus' ];
+	const shortcuts = [ 'translate', 'rotate', 'scale', /* 'undo', */ 'focus' ];
 
 	function createShortcutInput( name ) {
 
@@ -112,7 +112,10 @@ function SidebarSettingsShortcuts( editor ) {
 				if ( object === null ) return;
 
 				const parent = object.parent;
-				if ( parent !== null ) editor.execute( new RemoveObjectCommand( editor, object ) );
+				if ( parent !== null ) {
+          editor.execute( new RemoveObjectCommand( editor, object ) );
+          this.sendMqtt("removeObject", {uuid: object.uuid});
+        };
 
 				break;
 
@@ -133,7 +136,7 @@ function SidebarSettingsShortcuts( editor ) {
 				signals.transformModeChanged.dispatch( 'scale' );
 
 				break;
-
+/*
 			case config.getKey( 'settings/shortcuts/undo' ):
 
 				if ( IS_MAC ? event.metaKey : event.ctrlKey ) {
@@ -153,7 +156,7 @@ function SidebarSettingsShortcuts( editor ) {
 				}
 
 				break;
-
+*/
 			case config.getKey( 'settings/shortcuts/focus' ):
 
 				if ( editor.selected !== null ) {

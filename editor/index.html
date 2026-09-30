@@ -8,10 +8,23 @@
 		<link rel="manifest" href="manifest.json">
 		<link rel="shortcut icon" href="../files/favicon_white.ico" media="(prefers-color-scheme: dark)"/>
 		<link rel="shortcut icon" href="../files/favicon.ico" media="(prefers-color-scheme: light)" />
+    <style>
+      .splash{
+        position:relative;
+        background:rgba(0,0,0,0.6); 
+        width:100vw; 
+        height:100vh;
+        z-index:9000;
+      }
+      .splash.hidden{
+        display:none;
+      }
+    </style>
 	</head>
 	<body>
 		<link rel="stylesheet" href="css/main.css">
 
+		<script src="./../../js/mqttws31.js"></script>
 		<script src="../examples/jsm/libs/draco/draco_encoder.js"></script>
 
 		<link rel="stylesheet" href="js/libs/codemirror/codemirror.css">
@@ -45,6 +58,8 @@
 		<script src="js/libs/tern-threejs/threejs.js"></script>
 		<script src="js/libs/signals.min.js"></script>
 
+		<script src="./../../../public/js/html2canvas.min.js"></script>
+
 		<!-- Import maps polyfill -->
 		<!-- Remove this when import maps will be widely supported -->
 		<script async src="js/libs/es-module-shims.js"></script>
@@ -72,25 +87,50 @@
 			import { Resizer } from './js/Resizer.js';
 			import { VRButton } from 'three/addons/webxr/VRButton.js';
 
+      import { MqttConnector } from './js/collab/mqtt/MqttConnector.js';
+      import { RenderWordpressComponent } from './js/libs/RenderWordpressComponent.js';
+      import { ExtrudeMeshFromSvg } from './js/libs/ExtrudeMeshFromSvg.js';
+      import { AddObjectAndSetMetaCommand } from './js/commands/AddObjectAndSetMetaCommand.js';
+      import { AddObjectCommand } from './js/commands/AddObjectCommand.js';
+      import { SetPositionCommand } from './js/commands/SetPositionCommand.js';
+      import { SetRotationCommand } from './js/commands/SetRotationCommand.js';
+      import { SetScaleCommand } from './js/commands/SetScaleCommand.js';
+
+
 			window.URL = window.URL || window.webkitURL;
 			window.BlobBuilder = window.BlobBuilder || window.WebKitBlobBuilder || window.MozBlobBuilder;
+      window.addEventListener("beforeunload", (event) => {
+        editor.sendMqtt('userDisconnected', {content:"test"})
+      });
 
-			Number.prototype.format = function () {
+      const parentUrlParams = new URLSearchParams(parent.window.location.search);
+      const vrPostType = parentUrlParams.get('vr_post_type');
+      const vrPostId = parentUrlParams.get('vr_post_id');
+      var sceneIsLoading = {state: 0}; // 0 = started, 1 = WP data loaded, 2 = waiting for live updates, 3 = parsing & loading live updates, 4 = all done
 
-				return this.toString().replace( /(\d)(?=(\d{3})+(?!\d))/g, '$1,' );
-
-			};
-
-			//
 
 			const editor = new Editor();
+      const instanceUUID = THREE.MathUtils.generateUUID();
+      const mqttTopic = `wordverse-${vrPostId}`;
+      const mqttConnectorInstance = new MqttConnector(instanceUUID, mqttTopic, sceneIsLoading, editor);
+
+			Number.prototype.format = function () {
+				return this.toString().replace( /(\d)(?=(\d{3})+(?!\d))/g, '$1,' );
+			};
+
+      function delay(t, val) {
+        return new Promise(resolve => setTimeout(resolve, t, val));
+      }
+
 
 			window.editor = editor; // Expose editor to Console
 			window.THREE = THREE; // Expose THREE to APP Scripts and Console
 			window.VRButton = VRButton; // Expose VRButton to APP Scripts
+      
+      editor.setSendMQTT(mqttConnectorInstance.sendMqttMessage);
 
-			const viewport = new Viewport( editor );
-			document.body.appendChild( viewport.dom );
+      const viewport = new Viewport( editor );
+      document.body.appendChild( viewport.dom );
 
 			const toolbar = new Toolbar( editor );
 			document.body.appendChild( toolbar.dom );
@@ -104,13 +144,326 @@
 			const sidebar = new Sidebar( editor );
 			document.body.appendChild( sidebar.dom );
 
-			const menubar = new Menubar( editor );
+			const menubar = new Menubar( editor, mqttConnectorInstance.mqttConnectionStatus );
 			document.body.appendChild( menubar.dom );
 
 			const resizer = new Resizer( editor );
 			document.body.appendChild( resizer.dom );
 
-			//
+    
+
+      editor.clear();
+      // console.log('Load vr scene '+vrScene.id);
+
+      const color = 0x222222;
+
+      const light = new THREE.AmbientLight( color );
+      light.name = 'AmbientLight';
+
+      editor.execute( new AddObjectCommand( editor, light ) );
+
+      // console.log(parent, vrPostType);
+
+      /**
+       *  Load our WOrdpress Scene CPT
+      */
+
+      fetch(
+        vrPostId ? `/wp-json/wp/v2/vr-scenes/${vrPostId}` : 
+        `/wp-json/wp/v2/vr-scenes/?vr_post_type=${vrPostType}`
+      )
+      .then(vrScenesResult => vrScenesResult.json())
+      .then(vrScenesData => {
+        sceneIsLoading.state = 1;
+        console.log("vrSceneData", vrScenesData);
+        
+        // fetch scene background model
+        const vrSceneData = vrPostId ? vrScenesData : vrScenesData[0];
+        editor.scene.name = vrSceneData.title.rendered;
+        editor.scene.background = new THREE.Color(vrSceneData.acf.skycolor);
+        editor.scene.userData = {...editor.scene.userData, wpData:vrSceneData};
+
+        let mesh = false;
+        vrSceneData.acf.primitives && vrSceneData.acf.primitives.map(primitiveProps => {
+            console.log("primitiveProps", primitiveProps);
+            if (primitiveProps.type === 'Box'){
+              const geometry = new THREE.BoxGeometry( 1, 1, 1, 1, 1, 1 );
+              mesh = new THREE.Mesh( geometry, new THREE.MeshStandardMaterial() );
+              // mesh.name = primitiveProps.name;
+              // mesh.uuid = primitiveProps.uuid;
+              
+            }else if (primitiveProps.type === 'Capsule'){
+              const geometry = new THREE.CapsuleGeometry( 1, 1, 4, 8 );
+              const material = new THREE.MeshStandardMaterial();
+              mesh = new THREE.Mesh( geometry, material );
+              // mesh.name = primitiveProps.name;
+              // mesh.uuid = primitiveProps.uuid;
+            }else if (primitiveProps.type === 'Circle'){
+              const geometry = new THREE.CircleGeometry( 1, 32, 0, Math.PI * 2 );
+              mesh = new THREE.Mesh( geometry, new THREE.MeshStandardMaterial() );
+            }else if (primitiveProps.type === 'Cylinder'){
+              const geometry = new THREE.CylinderGeometry( 1, 1, 1, 32, 1, false, 0, Math.PI * 2 );
+              mesh = new THREE.Mesh( geometry, new THREE.MeshStandardMaterial() );
+            }else if (primitiveProps.type === 'Dodecahedron'){
+              const geometry = new THREE.DodecahedronGeometry( 1, 0 );
+              mesh = new THREE.Mesh( geometry, new THREE.MeshStandardMaterial() );
+            }else if (primitiveProps.type === 'Icosahedron'){
+              const geometry = new THREE.IcosahedronGeometry( 1, 0 );
+              mesh = new THREE.Mesh( geometry, new THREE.MeshStandardMaterial() );
+            }else if (primitiveProps.type === 'Octahedron'){
+              const geometry = new THREE.OctahedronGeometry( 1, 0 );
+              mesh = new THREE.Mesh( geometry, new THREE.MeshStandardMaterial() );
+            }else if (primitiveProps.type === 'Plane'){
+              const geometry = new THREE.PlaneGeometry( 1, 1, 1, 1 );
+              const material = new THREE.MeshStandardMaterial();
+              mesh = new THREE.Mesh( geometry, material );
+            }else if (primitiveProps.type === 'Ring'){
+              const geometry = new THREE.RingGeometry( 0.5, 1, 32, 1, 0, Math.PI * 2 );
+              mesh = new THREE.Mesh( geometry, new THREE.MeshStandardMaterial() );
+            }else if (primitiveProps.type === 'Sphere'){
+              const geometry = new THREE.SphereGeometry( 1, 32, 16, 0, Math.PI * 2, 0, Math.PI );
+              mesh = new THREE.Mesh( geometry, new THREE.MeshStandardMaterial() );
+            }else if (primitiveProps.type === 'Sprite'){
+              const mesh = new THREE.Sprite( new THREE.SpriteMaterial() );
+            }else if (primitiveProps.type === 'Tetrahedron'){
+              const geometry = new THREE.TetrahedronGeometry( 1, 0 );
+              mesh = new THREE.Mesh( geometry, new THREE.MeshStandardMaterial() );
+            }else if (primitiveProps.type === 'Tetrahedron'){
+              const geometry = new THREE.TetrahedronGeometry( 1, 0 );
+              mesh = new THREE.Mesh( geometry, new THREE.MeshStandardMaterial() );
+            }else if (primitiveProps.type === 'Torus'){
+              const geometry = new THREE.TorusGeometry( 1, 0.4, 12, 48, Math.PI * 2 );
+              mesh = new THREE.Mesh( geometry, new THREE.MeshStandardMaterial() );
+            }else if (primitiveProps.type === 'TorusKnot'){
+              const geometry = new THREE.TorusKnotGeometry( 1, 0.4, 64, 8, 2, 3 );
+              mesh = new THREE.Mesh( geometry, new THREE.MeshStandardMaterial() );
+            }else if (primitiveProps.type === 'Tube'){
+              const path = new THREE.CatmullRomCurve3( [
+                new THREE.Vector3( 2, 2, - 2 ),
+                new THREE.Vector3( 2, - 2, - 0.6666666666666667 ),
+                new THREE.Vector3( - 2, - 2, 0.6666666666666667 ),
+                new THREE.Vector3( - 2, 2, 2 )
+              ] );
+          
+              const geometry = new THREE.TubeGeometry( path, 64, 1, 8, false );
+              mesh = new THREE.Mesh( geometry, new THREE.MeshStandardMaterial() );
+            } else {
+              mesh = false;
+            }
+
+            const primProps = {
+                wpData: {
+                  type: "primitive", 
+                  subtype: primitiveProps.type,
+                },
+                uuid: primitiveProps.uuid,
+                name: primitiveProps.name,
+                scale: primitiveProps.scale,
+                position: primitiveProps.position,
+                rotation: primitiveProps.rotation,
+                imageTexture: primitiveProps.imageTexture || null,
+                texture: primitiveProps.texture || null,
+                videoTexture: primitiveProps.videoTexture || null,
+            };
+            mesh ? editor.execute( new AddObjectAndSetMetaCommand( editor, mesh, primProps)) : console.log('no mesh for '+primitiveProps.type);
+            return mesh ? true : false;
+          }
+        );
+
+        let light = false;
+        vrSceneData.acf.lights && vrSceneData.acf.lights.map(lightProps => {
+            console.log("lightProps", lightProps);
+            if (lightProps.type === 'AmbientLight'){
+              const color = 0x222222;
+              light = new THREE.AmbientLight( color );
+
+            }else if (lightProps.type === 'DirectionalLight'){
+              const color = 0xffffff;
+              const intensity = 1;
+              light = new THREE.DirectionalLight( color, intensity );
+              light.target.name = 'DirectionalLight Target';
+
+            }else if (lightProps.type === 'HemisphereLight'){
+              const skyColor = 0x00aaff;
+              const groundColor = 0xffaa00;
+              const intensity = 1;
+              light = new THREE.HemisphereLight( skyColor, groundColor, intensity );
+
+            }else if (lightProps.type === 'PointLight'){
+              const color = 0xffffff;
+              const intensity = 1;
+              const distance = 0;
+              light = new THREE.PointLight( color, intensity, distance );
+
+            }else if (lightProps.type === 'SpotLight'){
+              const color = 0xffffff;
+              const intensity = 1;
+              const distance = 0;
+              const angle = Math.PI * 0.1;
+              const penumbra = 0;
+              light = new THREE.SpotLight( color, intensity, distance, angle, penumbra );
+            } else {
+              light = false;
+            }
+
+            const primProps = {
+                wpData: {
+                  type: "light", 
+                  subtype: lightProps.type,
+                },
+                uuid: lightProps.uuid,
+                name: lightProps.name,
+                scale: lightProps.scale,
+                position: lightProps.position,
+                rotation: lightProps.rotation,
+            };
+            light ? editor.execute( new AddObjectAndSetMetaCommand( editor, light, primProps)) : console.log('no mesh for '+lightProps.type);
+            return light ? true : false;
+          }
+        );
+
+        // fetch scene models
+        if(vrSceneData.acf.models){
+          Promise.all(vrSceneData.acf.models.map(vrSceneModel => {
+            return fetch("/wp-json/wp/v2/vr-model/"+vrSceneModel.vrmodel)
+              .then(vrSceneModelResult => vrSceneModelResult.json())
+              .then(vrSceneModelData =>{
+                // console.log("vrSceneModelData", vrSceneModelData);
+                const modelMediaId = vrSceneModelData.acf.model_file || vrSceneModelData.acf.gltf_file || vrSceneModelData.acf.fbx_file
+                return fetch("/wp-json/wp/v2/media/"+modelMediaId)
+                .then(vrSceneGltfResult => vrSceneGltfResult.json())
+                .then(vrSceneGltfData => {
+                  // console.log("vrSceneGltfData", vrSceneGltfData);
+                  return fetch(vrSceneGltfData.source_url)
+                  .then(vrSceneGltfFile => vrSceneGltfFile.blob())
+                  .then(vrSceneGltfBlob => {
+
+                    vrSceneGltfBlob.name = vrSceneGltfData.source_url;//.split("/").pop();
+                    vrSceneGltfBlob.lastModified = new Date();
+                    
+                    editor.loader.loadFiles( 
+                      [vrSceneGltfBlob], "", 
+                      [ {
+                          uuid:vrSceneModel.uuid,
+                          name:vrSceneModel.name,
+                          scale:vrSceneModel.scale,
+                          position:vrSceneModel.position,
+                          rotation:vrSceneModel.rotation,
+                          wpData:vrSceneModelData,
+                          imageTexture:vrSceneModel.imageTexture || null,
+                          texture:vrSceneModel.texture || null,
+                          videoTexture:vrSceneModel.videoTexture || null,
+                          // name: vrSceneModelData.title.rendered
+                      } ]
+                    );
+                    return true;
+                  });
+
+                });
+              });
+            })
+          ).then(()=>{
+            sceneIsLoading.state = 2;
+            console.log('ALL MODELS LOADED');
+            mqttConnectorInstance.MQTTconnect();
+            return delay(8000);
+          }).then(() => {
+            if(sceneIsLoading.state < 3){
+              console.log('No other users or instances present');
+              editor.history.clear();
+              document.getElementById('splash').classList.add('hidden');
+            }else{
+              console.log('Synching with other live users');
+            }
+          })
+        }else{
+          sceneIsLoading.state = 2;
+          console.log('ALL MODELS LOADED');
+          mqttConnectorInstance.MQTTconnect();
+          delay(8000).then(() => {
+            if(sceneIsLoading.state < 3){
+              console.log('No other users or instances present');
+              editor.history.clear();
+              document.getElementById('splash').classList.add('hidden');
+            }else{
+              console.log('Synching with other live users');
+            }
+          })
+          // editor.history.clear();
+          // document.getElementById('splash').classList.add('hidden');
+        };
+
+        // fetch svg models
+        vrSceneData.acf.svg_models && vrSceneData.acf.svg_models.map(vrSvg => {
+
+          fetch( "/wp-json/wp/v2/media/"+vrSvg.svgmodel )
+          .then( vrSvgResult => vrSvgResult.json() )
+          .then( vrSvgData => {
+
+            fetch( ""+vrSvgData.source_url )
+            .then( vrSvgFile => vrSvgFile.text())
+            .then( vrSvgText => {
+              
+              const vrSvgMesh = ExtrudeMeshFromSvg(vrSvgText);
+              vrSvgMesh.name = `${vrSvgData.source_url.split("/").pop()} (SVG)`;
+              
+              editor.execute( new AddObjectAndSetMetaCommand( editor, vrSvgMesh, 
+                {
+                  uuid:vrSvg.uuid,
+                  name:vrSvg.name,
+                  position:vrSvg.position,
+                  scale:vrSvg.scale,
+                  rotation:vrSvg.rotation,
+                  wpData:vrSvgData,
+                  imageTexture: vrSvg.imageTexture || null,
+                  texture: vrSvg.texture || null,
+                  videoTexture: vrSvg.videoTexture || null,
+                },  
+              ));
+
+            });
+          });
+        });
+
+        // fetch wp content components
+        console.log("wp_elements?");
+        fetch(`/wp-json/wp/v2/${vrSceneData.acf.vr_post_type}/?per_page=100&status=publish`)
+        .then(vrWpResult => vrWpResult.json())
+        .then(function (vrWpData) {
+
+          const postListData = vrWpData[ Math.floor(Math.random() * vrWpData.length) ];
+          vrSceneData.acf.wp_elements && vrSceneData.acf.wp_elements.map((vrWp) => {
+            
+            const dataSelector = vrWp.data_selector.split('.');
+            console.log("wp_elements", vrWp, dataSelector, (dataSelector.length > 1 ? dataSelector.length > 2 ? postListData[dataSelector[0]][dataSelector[1]][dataSelector[2]] : postListData[dataSelector[0]][dataSelector[1]] : postListData[dataSelector[0]]) );
+            
+            const componentContent = dataSelector.length > 1 ? dataSelector.length > 2 ? postListData[dataSelector[0]][dataSelector[1]][dataSelector[2]] : postListData[dataSelector[0]][dataSelector[1]] : postListData[dataSelector[0]];
+            console.log('componentContent', typeof componentContent, componentContent);
+
+            const prop = {
+              name: vrWp.data_selector,
+              data_selector: vrWp.data_selector,
+              content: componentContent,
+            }
+            console.log('componentContent', prop);
+
+            RenderWordpressComponent(
+              prop, editor, {
+                componentType:vrWp.component_type,
+                position:vrWp.position,
+                scale:vrWp.scale,
+                rotation:vrWp.rotation,
+                wpData:{
+                  type:`wordpress-component`,
+                  name: vrWp.data_selector,
+                  data_selector: vrWp.data_selector,
+                  componentType:vrWp.component_type,
+                },
+              },  
+            ).then( wpComponent => wpComponent && editor.execute( new AddObjectAndSetMetaCommand( editor, wpComponent.mesh, wpComponent.meta ) ) );
+          });
+        });
+      });
 
 			editor.storage.init( function () {
 
@@ -166,6 +519,9 @@
 
 				const signals = editor.signals;
 
+        console.log("signals", signals);
+        console.log("saveState", saveState);
+
 				signals.geometryChanged.add( saveState );
 				signals.objectAdded.add( saveState );
 				signals.objectChanged.add( saveState );
@@ -183,6 +539,8 @@
 			//
 
 			document.addEventListener( 'dragover', function ( event ) {
+
+        console.log("drag action started, shoudl we add MQTT");
 
 				event.preventDefault();
 				event.dataTransfer.dropEffect = 'copy';
@@ -260,5 +618,8 @@
 			}
 
 		</script>
+    <div id="splash" class="splash" style="background:rgba(0,0,0,.5) url('./images/bootscreen.png') center center no-repeat; background-size:480px;">
+      
+    </div>
 	</body>
 </html>

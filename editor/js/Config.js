@@ -5,14 +5,14 @@ function Config() {
 	const storage = {
 		'language': 'en',
 
-		'autosave': true,
+		'autosave': false,
 
 		'project/title': '',
 		'project/editable': false,
 		'project/vr': false,
 
-		'project/renderer/antialias': true,
-		'project/renderer/shadows': true,
+		'project/renderer/antialias': false,
+		'project/renderer/shadows': false,
 		'project/renderer/shadowType': 1, // PCF
 		'project/renderer/physicallyCorrectLights': false,
 		'project/renderer/toneMapping': 0, // NoToneMapping
@@ -20,9 +20,9 @@ function Config() {
 
 		'settings/history': false,
 
-		'settings/shortcuts/translate': 'w',
-		'settings/shortcuts/rotate': 'e',
-		'settings/shortcuts/scale': 'r',
+		'settings/shortcuts/translate': 'g', //'w',
+		'settings/shortcuts/rotate': 'r', //'e',
+		'settings/shortcuts/scale': 's', //'r',
 		'settings/shortcuts/undo': 'z',
 		'settings/shortcuts/focus': 'f'
 	};

@@ -135,7 +135,7 @@ const assets = [
 	'./js/Loader.js',
 	'./js/LoaderUtils.js',
 	'./js/Menubar.js',
-	'./js/Menubar.File.js',
+	//'./js/Menubar.File.js',
 	'./js/Menubar.Edit.js',
 	'./js/Menubar.Add.js',
 	'./js/Menubar.Play.js',
@@ -254,6 +254,8 @@ self.addEventListener( 'fetch', async function ( event ) {
 	const request = event.request;
 
 	if ( request.url.startsWith( 'chrome-extension' ) ) return;
+  
+  if ( request.url.startsWith( 'https://wordverse.designpartyprogram.nl/wp-json/wp/v2/' ) ) return;
 
 	event.respondWith( networkFirst( request ) );
 

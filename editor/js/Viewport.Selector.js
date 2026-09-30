@@ -15,7 +15,24 @@ class Selector {
 
 				const object = intersects[ 0 ].object;
 
-				if ( object.userData.object !== undefined ) {
+        //console.log("intersectDetecerted",object, object.parent, object.parent.parent );
+
+        let selectedObjectGroup = object;
+        
+        while(selectedObjectGroup.parent && selectedObjectGroup.parent.type !== 'Scene' ){
+          //console.log("object parent type", selectedObjectGroup, typeof selectedObjectGroup.parent);
+          selectedObjectGroup = selectedObjectGroup.parent;
+        };
+
+        //console.log("selected group object", selectedObjectGroup);
+
+				if ( selectedObjectGroup !== undefined ) {
+
+					// helper
+
+					this.select( selectedObjectGroup );
+
+				} else if ( object.userData.object !== undefined ) {
 
 					// helper
 

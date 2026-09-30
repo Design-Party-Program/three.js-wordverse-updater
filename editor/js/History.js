@@ -33,6 +33,8 @@ class History {
 
 	execute( cmd, optionalName ) {
 
+    // console.log("history.execute called")
+
 		const lastCmd = this.undos[ this.undos.length - 1 ];
 		const timeDifference = Date.now() - this.lastCmdTime;
 
@@ -65,9 +67,13 @@ class History {
 
 		}
 
+    console.log("history,execute: will cmd.execute succeed?");
+
 		cmd.name = ( optionalName !== undefined ) ? optionalName : cmd.name;
 		cmd.execute();
 		cmd.inMemory = true;
+
+    console.log("history,execute: cmd.execute succeeded");
 
 		if ( this.config.getKey( 'settings/history' ) ) {
 

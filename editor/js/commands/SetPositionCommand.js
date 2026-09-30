@@ -36,10 +36,13 @@ class SetPositionCommand extends Command {
 	}
 
 	execute() {
-
+    console.log("setPositionCommand.execute: called");
 		this.object.position.copy( this.newPosition );
+    console.log("setPositionCommand.execute: position copy succeeded");
 		this.object.updateMatrixWorld( true );
+    console.log("setPositionCommand.execute: upate worldmatrix succeeded");
 		this.editor.signals.objectChanged.dispatch( this.object );
+    console.log("setPositionCommand.execute: dispatch succeeded");
 
 	}
 

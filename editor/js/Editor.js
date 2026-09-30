@@ -64,6 +64,8 @@ function Editor() {
 		objectChanged: new Signal(),
 		objectRemoved: new Signal(),
 
+		avatarAdded: new Signal(),
+
 		cameraAdded: new Signal(),
 		cameraRemoved: new Signal(),
 
@@ -122,6 +124,8 @@ function Editor() {
 	this.cameras = {};
 	this.viewportCamera = this.camera;
 
+  // mqtt addition
+  this.sendMQTT = () => { console.log('mqtt not initiated yet') };
 	this.addCamera( this.camera );
 
 }
@@ -186,6 +190,184 @@ Editor.prototype = {
 
 	},
 
+	addObjectAndSetMeta: function ( object, meta, parent, index ) {
+
+    console.log("addObjectAndSetMeta", meta);
+
+		var scope = this;
+
+		object.traverse( function ( child ) {
+
+			if ( child.geometry !== undefined ) scope.addGeometry( child.geometry );
+			if ( child.material !== undefined ) scope.addMaterial( child.material );
+
+			scope.addCamera( child );
+			scope.addHelper( child );
+
+		} );
+
+		if ( parent === undefined ) {
+
+			this.scene.add( object );
+
+      /* hack to set uuid & name */
+      meta.uuid && (object.uuid = meta.uuid);
+      meta.name && (object.name = meta.name);
+      /* /hack to set uuid & name */
+      if( meta.position ){
+        object.position.x = meta.position.x;
+        object.position.y = meta.position.y;
+        object.position.z = meta.position.z;
+      }
+      
+      if( meta.rotation ){
+        object.rotation.x = meta.rotation.x;
+        object.rotation.y = meta.rotation.y;
+        object.rotation.z = meta.rotation.z;
+      }
+
+      if( meta.scale ){
+        object.scale.x = meta.scale.x;
+        object.scale.y = meta.scale.y;
+        object.scale.z = meta.scale.z;
+      }
+      
+      object.userData = meta.wpData ? {...object.userData, wpData:meta.wpData} : object.userData;
+
+      // Persist texture source fields so the Sidebar can read + re-apply them
+      if (meta.imageTexture) object.userData.imageTexture = meta.imageTexture;
+      if (meta.texture)      object.userData.texture      = meta.texture;
+      // Use explicit videoTexture first; fall back to extracting it from the hydra code
+      if (meta.videoTexture) {
+        object.userData.videoTexture = meta.videoTexture;
+      } else if (meta.texture) {
+        var _vm = meta.texture.match(/initVideo\(\s*["']([^"']+)["']\s*\)/);
+        if (_vm) object.userData.videoTexture = _vm[1];
+      }
+
+      // ── imageTexture: WP media attachment ID → fetch URL → canvas texture ──
+      if (meta.imageTexture) {
+        fetch('/wp-json/wp/v2/media/' + meta.imageTexture)
+          .then(function(r) { return r.json(); })
+          .then(function(mediaData) {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = function() {
+              const canvas = document.createElement('canvas');
+              const ctx = canvas.getContext('2d');
+              canvas.width = img.width;
+              canvas.height = img.height;
+              // Flip vertically, matching the r3f player behaviour
+              ctx.scale(1, -1);
+              ctx.translate(0, -img.height);
+              ctx.drawImage(img, 0, 0);
+              const imgTexture = new THREE.CanvasTexture(canvas);
+              imgTexture.needsUpdate = true;
+              object.traverse(function(child) {
+                if (child.isMesh) {
+                  const mats = Array.isArray(child.material)
+                    ? child.material : [child.material];
+                  mats.forEach(function(mat) {
+                    const m = mat.clone();
+                    m.map = imgTexture;
+                    m.needsUpdate = true;
+                    child.material = m;
+                  });
+                }
+              });
+              scope.signals.sceneGraphChanged.dispatch();
+            };
+            img.onerror = function() {
+              console.error('imageTexture: failed to load image from', mediaData.source_url);
+            };
+            if ( ! mediaData || ! mediaData.source_url ) {
+              console.warn('imageTexture: media lookup returned no source_url', meta.imageTexture, mediaData);
+              return;
+            }
+            img.src = mediaData.source_url;
+          })
+          .catch(function(err) {
+            console.error('imageTexture: WP media fetch failed', err);
+          });
+      }
+
+      // ── texture: Hydra JS string → offscreen canvas → animated CanvasTexture ──
+      if (meta.texture) {
+        (async function(textureCode) {
+          try {
+            const hydraCanvas = document.createElement('canvas');
+            hydraCanvas.width = 1024;
+            hydraCanvas.height = 1024;
+            hydraCanvas.style.cssText = 'position:absolute;right:-2048px;bottom:0;z-index:-1;pointer-events:none;';
+            document.body.appendChild(hydraCanvas);
+
+            // Load hydra-synth UMD once; subsequent calls reuse the same promise
+            if (!window.Hydra) {
+              if (!window._hydraSynthLoading) {
+                window._hydraSynthLoading = new Promise(function(resolve, reject) {
+                  const script = document.createElement('script');
+                  script.src = 'https://unpkg.com/hydra-synth/dist/hydra-synth.js';
+                  script.onload = resolve;
+                  script.onerror = reject;
+                  document.head.appendChild(script);
+                });
+              }
+              await window._hydraSynthLoading;
+            }
+
+            const hydraInstance = new window.Hydra({
+              detectAudio: false,
+              makeGlobal: false,
+              canvas: hydraCanvas,
+            });
+
+            // Give hydra time to initialise before evaluating code
+            await new Promise(function(resolve) { setTimeout(resolve, 150); });
+
+            // Evaluate each line of the hydra texture code with hydraInstance.synth. prefix
+            const lines = textureCode.split(/\r?\n/).filter(function(l) { return l.trim(); });
+            for (const line of lines) {
+              try {
+                eval('hydraInstance.synth.' + line.trim()); // eslint-disable-line no-eval
+              } catch(e) {
+                console.warn('Hydra eval error on line:', line, e);
+              }
+            }
+
+            const canvasTexture = new THREE.CanvasTexture(hydraCanvas);
+            canvasTexture.needsUpdate = true;
+            object.traverse(function(child) {
+              if (child.isMesh) {
+                child.material = new THREE.MeshPhongMaterial({ map: canvasTexture });
+                child.material.needsUpdate = true;
+              }
+            });
+
+            // Mark texture dirty every frame so hydra animation plays
+            (function frameLoop() {
+              canvasTexture.needsUpdate = true;
+              requestAnimationFrame(frameLoop);
+            })();
+
+            scope.signals.sceneGraphChanged.dispatch();
+          } catch(err) {
+            console.error('Hydra texture setup failed:', err);
+          }
+        })(meta.texture);
+      }
+
+		} else {
+
+			parent.children.splice( index, 0, object );
+			object.parent = parent;
+
+		}
+
+		this.signals.objectAdded.dispatch( object );
+		this.signals.sceneGraphChanged.dispatch();
+
+	},
+
 	moveObject: function ( object, parent, before ) {
 
 		if ( parent === undefined ) {
@@ -222,6 +404,10 @@ Editor.prototype = {
 		if ( object.parent === null ) return; // avoid deleting the camera or scene
 
 		var scope = this;
+
+
+    console.log('send removeObject MQTT Message');
+
 
 		object.traverse( function ( child ) {
 
@@ -371,6 +557,22 @@ Editor.prototype = {
 
 		if ( camera.isCamera ) {
 
+      this.sendMqtt( 
+        `addCamera`,
+        {
+          uuid: camera.uuid,
+          //options: JSON.stringify(options)
+        }
+      );
+
+      camera.addEventListener('change', this.sendMqtt( 
+        `setCameraPosition`,
+        {
+          uuid: camera.uuid,
+          position: JSON.stringify(camera.position)
+        }
+      ));
+
 			this.cameras[ camera.uuid ] = camera;
 
 			this.signals.cameraAdded.dispatch( camera );
@@ -467,6 +669,69 @@ Editor.prototype = {
 		}
 
 	},
+  
+
+	addAvatarAndSetMeta: function ( object, meta, parent, index ) {
+
+    console.log("addAvatarAndSetMeta", meta);
+
+		var scope = this;
+
+		object.traverse( function ( child ) {
+
+			if ( child.geometry !== undefined ) scope.addGeometry( child.geometry );
+			if ( child.material !== undefined ) scope.addMaterial( child.material );
+
+			// scope.addCamera( child );
+			// scope.addHelper( child );
+
+		} );
+
+		if ( parent === undefined ) {
+
+			//this.scene.add( object );
+
+      const avatarGroup = this.objectByUuid(meta.uuid);
+
+      /* hack to set uuid & name */
+      //meta.uuid && (object.uuid = meta.uuid);
+      //meta.name && (object.name = meta.name);
+
+      /* /hack to set uuid & name */
+
+      // if( meta.position ){
+      //   object.position.x = meta.position.x;
+      //   object.position.y = meta.position.y;
+      //   object.position.z = meta.position.z;
+      // }
+      
+      // if( meta.rotation ){
+      //   object.rotation.x = meta.rotation.x;
+      //   object.rotation.y = meta.rotation.y;
+      //   object.rotation.z = meta.rotation.z;
+      // }
+
+      // if( meta.scale ){
+      //   object.scale.x = meta.scale.x;
+      //   object.scale.y = meta.scale.y;
+      //   object.scale.z = meta.scale.z;
+      // }
+      
+      object.userData = meta.wpData ? {...object.userData, wpData:meta.wpData} : object.userData;
+
+      avatarGroup.add(object);
+
+		} else {
+
+			parent.children.splice( index, 0, object );
+			object.parent = parent;
+
+		}
+
+		this.signals.avatarAdded.dispatch( object );
+		this.signals.sceneGraphChanged.dispatch();
+
+	},
 
 	//
 
@@ -539,7 +804,7 @@ Editor.prototype = {
 
 	select: function ( object ) {
 
-		this.selector.select( object );
+		object.selectable && selectable === false ? null: this.selector.select( object );
 
 	},
 
@@ -613,6 +878,7 @@ Editor.prototype = {
 		while ( objects.length > 0 ) {
 
 			this.removeObject( objects[ 0 ] );
+      this.sendMqtt("removeObject", {uuid: object[ 0 ].uuid});
 
 		}
 
@@ -696,7 +962,15 @@ Editor.prototype = {
 
 	},
 
+	objectByName: function ( name ) {
+
+		return this.scene.getObjectByProperty( 'name', name, true );
+
+	},
+
 	execute: function ( cmd, optionalName ) {
+
+    // console.log("editor.execute ", optionalName);
 
 		this.history.execute( cmd, optionalName );
 
@@ -712,7 +986,15 @@ Editor.prototype = {
 
 		this.history.redo();
 
-	}
+	},
+
+  setSendMQTT: function (mqttSendFunction){
+    this.sendMQTT = mqttSendFunction;
+  },
+
+  sendMqtt: function (commandString, propertyObject){
+    this.sendMQTT ? this.sendMQTT(commandString, propertyObject) : console.log('No Mosquitto configured');
+  }
 
 };
 

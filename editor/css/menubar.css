@@ -1,0 +1,7 @@
+#menubar .Button{
+  max-height:40px
+}
+#menubar .Button img{
+  width:24px;
+  max-height: 40px;
+}

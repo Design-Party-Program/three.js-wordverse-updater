@@ -27,6 +27,7 @@ function ViewportInfo( editor ) {
 	container.add( new UIText( strings.getKey( 'viewport/info/frametime' ) ).setTextTransform( 'lowercase' ) );
 	container.add( frametimeText, new UIBreak() );
 
+	signals.avatarAdded.add( update );
 	signals.objectAdded.add( update );
 	signals.objectRemoved.add( update );
 	signals.geometryChanged.add( update );

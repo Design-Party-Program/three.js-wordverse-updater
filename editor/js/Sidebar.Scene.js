@@ -19,13 +19,16 @@ function SidebarScene( editor ) {
 	function buildOption( object, draggable ) {
 
 		const option = document.createElement( 'div' );
+    // if(object.name ==='User Camera'){
+    //   option.style.display = 'none';
+    // }
 		option.draggable = draggable;
 		option.innerHTML = buildHTML( object );
 		option.value = object.id;
 
 		// opener
 
-		if ( nodeStates.has( object ) ) {
+		if ( nodeStates.has( object )) {
 
 			const state = nodeStates.get( object );
 
@@ -353,22 +356,25 @@ function SidebarScene( editor ) {
 			for ( let i = 0, l = objects.length; i < l; i ++ ) {
 
 				const object = objects[ i ];
+        console.log("object name test for outliner", object.name);
+        if(object.name !== 'User Camera'){
 
-				if ( nodeStates.has( object ) === false ) {
+          if ( nodeStates.has( object ) === false ) {
 
-					nodeStates.set( object, false );
+            nodeStates.set( object, false );
 
-				}
+          }
 
-				const option = buildOption( object, true );
-				option.style.paddingLeft = ( pad * 18 ) + 'px';
-				options.push( option );
+          const option = buildOption( object, true );
+          option.style.paddingLeft = ( pad * 18 ) + 'px';
+          options.push( option );
 
-				if ( nodeStates.get( object ) === true ) {
+          if ( nodeStates.get( object ) === true ) {
 
-					addObjects( object.children, pad + 1 );
+            addObjects( object.children, pad + 1 );
 
-				}
+          }
+        }
 
 			}
 

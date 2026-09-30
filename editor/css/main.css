@@ -1,3 +1,5 @@
+@import './toolbar.css';
+@import './menubar.css';
 :root {
 	color-scheme: light dark;
 }
@@ -448,7 +450,7 @@ select {
 		color: #888;
 		background-color: #eee;
 	}
-
+/* 
 #toolbar {
 	position: absolute;
 	left: 10px;
@@ -465,7 +467,9 @@ select {
 		#toolbar button img {
 			width: 16px;
 			opacity: 0.5;
-		}
+		} */
+    
+
 
 .Outliner {
 	color: #444;
