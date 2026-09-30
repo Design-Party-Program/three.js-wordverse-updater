@@ -14,13 +14,15 @@ jobs:
   test:
     name: Lint, Unit, Unit addons, Circular dependencies & Examples testing
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Git checkout
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 22
+          node-version: 24
           cache: 'npm'
       - name: Install dependencies
         run: npm ci
@@ -34,40 +36,43 @@ jobs:
       - name: === Unit addons testing ===
         run: npm run test-unit-addons
 
-      - name: === Circular dependencies testing ===
-        run: npm run test-circular-deps
-
       - name: === Examples ready for release ===
         run: npm run test-e2e-cov
 
   e2e:
     name: E2E testing
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
-        os: [ windows-latest ]
-        CI: [ 0, 1, 2, 3 ]
+        os: [ ubuntu-latest ]
+        CI: [ 0, 1, 2, 3, 4 ]
     env:
       CI: ${{ matrix.CI }}
     steps:
       - name: Git checkout
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 22
+          node-version: 24
           cache: 'npm'
+      - name: Install Vulkan drivers and xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers xvfb
       - name: Install dependencies
         run: npm ci
       - name: Build
-        run: npm run build-module
+        run: npm run build
 
       - name: === E2E testing ===
-        run: npm run test-e2e
+        run: xvfb-run -a npm run test-e2e
       - name: Upload output screenshots
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: Output screenshots-${{ matrix.os }}-${{ matrix.CI }}

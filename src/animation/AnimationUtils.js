@@ -1,5 +1,6 @@
 import { Quaternion } from '../math/Quaternion.js';
 import { AdditiveAnimationBlendMode } from '../constants.js';
+import { isTypedArray } from '../utils.js';
 
 /**
  * Converts an array to a specific type.
@@ -23,14 +24,14 @@ function convertArray( array, type ) {
 }
 
 /**
- * Returns `true` if the given object is a typed array.
+ * Returns `true` if the given keyframe track settings hold Bezier tangent data.
  *
- * @param {any} object - The object to check.
- * @return {boolean} Whether the given object is a typed array.
+ * @param {?Object} settings - The settings of a keyframe track.
+ * @return {boolean} Whether both tangent arrays are defined or not.
  */
-function isTypedArray( object ) {
+function hasTangents( settings ) {
 
-	return ArrayBuffer.isView( object ) && ! ( object instanceof DataView );
+	return settings !== undefined && settings.inTangents !== undefined && settings.outTangents !== undefined;
 
 }
 
@@ -417,6 +418,19 @@ class AnimationUtils {
 	}
 
 	/**
+	 * Returns `true` if the given keyframe track settings hold Bezier tangent data.
+	 *
+	 * @static
+	 * @param {?Object} settings - The settings of a keyframe track.
+	 * @return {boolean} Whether both tangent arrays are defined or not.
+	 */
+	static hasTangents( settings ) {
+
+		return hasTangents( settings );
+
+	}
+
+	/**
 	 * Returns an array by which times and values can be sorted.
 	 *
 	 * @static
@@ -497,6 +511,7 @@ class AnimationUtils {
 export {
 	convertArray,
 	isTypedArray,
+	hasTangents,
 	getKeyframeOrder,
 	sortedArray,
 	flattenJSON,

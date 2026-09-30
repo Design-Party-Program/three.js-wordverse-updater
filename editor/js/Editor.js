@@ -7,10 +7,11 @@ import { Strings } from './Strings.js';
 import { Storage as _Storage } from './Storage.js';
 import { Selector } from './Selector.js';
 
-var _DEFAULT_CAMERA = new THREE.PerspectiveCamera( 50, 1, 0.01, 1000 );
+var _DEFAULT_CAMERA = new THREE.PerspectiveCamera( 50, 1, 0.001, 1e10 );
 _DEFAULT_CAMERA.name = 'Camera';
 _DEFAULT_CAMERA.position.set( 0, 5, 10 );
 _DEFAULT_CAMERA.lookAt( new THREE.Vector3() );
+const _ORTHOGRAPHIC_FRUSTUM_SIZE = 100;
 
 function Editor() {
 
@@ -86,7 +87,6 @@ function Editor() {
 
 		showHelpersChanged: new Signal(),
 		refreshSidebarObject3D: new Signal(),
-		refreshSidebarEnvironment: new Signal(),
 		historyChanged: new Signal(),
 
 		viewportCameraChanged: new Signal(),
@@ -95,6 +95,11 @@ function Editor() {
 		intersectionsDetected: new Signal(),
 
 		pathTracerUpdated: new Signal(),
+
+		animationPanelChanged: new Signal(),
+		animationPanelResized: new Signal(),
+
+		morphTargetsUpdated: new Signal()
 
 	};
 
@@ -114,6 +119,9 @@ function Editor() {
 	this.sceneHelpers = new THREE.Scene();
 	this.sceneHelpers.add( new THREE.HemisphereLight( 0xffffff, 0x888888, 2 ) );
 
+	this.backgroundType = 'Default';
+	this.environmentType = 'Default';
+
 	this.object = {};
 	this.geometries = {};
 	this.materials = {};
@@ -131,6 +139,7 @@ function Editor() {
 
 	this.viewportCamera = this.camera;
 	this.viewportShading = 'default';
+	this.viewportColor = new THREE.Color();
 
   // mqtt addition
   this.sendMQTT = () => { console.log('mqtt not initiated yet') };
@@ -165,6 +174,8 @@ Editor.prototype = {
 
 		this.signals.sceneGraphChanged.active = true;
 		this.signals.sceneGraphChanged.dispatch();
+
+		this.signals.sceneEnvironmentChanged.dispatch( this.environmentType, scene.environment );
 
 	},
 
@@ -598,6 +609,32 @@ Editor.prototype = {
 
 					helper = new THREE.PointLightHelper( object, 1 );
 
+					helper.matrix = new THREE.Matrix4();
+					helper.matrixAutoUpdate = true;
+
+					const light = object;
+					const editor = this;
+
+					helper.updateMatrixWorld = function () {
+
+						light.getWorldPosition( this.position );
+
+						const distance = editor.viewportCamera.position.distanceTo( this.position );
+						this.scale.setScalar( distance / 30 );
+
+						this.updateMatrix();
+						this.matrixWorld.copy( this.matrix );
+
+						const children = this.children;
+
+						for ( let i = 0, l = children.length; i < l; i ++ ) {
+
+							children[ i ].updateMatrixWorld();
+
+						}
+
+					};
+
 				} else if ( object.isDirectionalLight ) {
 
 					helper = new THREE.DirectionalLightHelper( object, 1 );
@@ -613,10 +650,12 @@ Editor.prototype = {
 				} else if ( object.isSkinnedMesh ) {
 
 					helper = new THREE.SkeletonHelper( object.skeleton.bones[ 0 ] );
+					helper.userData.object = object;
 
 				} else if ( object.isBone === true && object.parent && object.parent.isBone !== true ) {
 
 					helper = new THREE.SkeletonHelper( object );
+					helper.userData.object = object;
 
 				} else {
 
@@ -625,10 +664,14 @@ Editor.prototype = {
 
 				}
 
-				const picker = new THREE.Mesh( geometry, material );
-				picker.name = 'picker';
-				picker.userData.object = object;
-				helper.add( picker );
+				if ( helper.isSkeletonHelper !== true ) {
+
+					const picker = new THREE.Mesh( geometry, material );
+					picker.name = 'picker';
+					picker.userData.object = object;
+					helper.add( picker );
+
+				}
 
 			}
 
@@ -780,9 +823,71 @@ Editor.prototype = {
 
 	},
 
+	setCameraType: function ( type ) {
+
+		const oldCamera = this.camera;
+
+		const isOrthographic = oldCamera.isOrthographicCamera === true;
+
+		if ( ( type === 'orthographic' && isOrthographic ) || ( type === 'perspective' && ! isOrthographic ) ) return;
+
+		// the orbit point the framing should be preserved around
+
+		const center = this.controls ? this.controls.center : new THREE.Vector3();
+		const distance = oldCamera.position.distanceTo( center );
+
+		let newCamera;
+
+		if ( type === 'orthographic' ) {
+
+			const halfSize = _ORTHOGRAPHIC_FRUSTUM_SIZE / 2;
+			newCamera = new THREE.OrthographicCamera( - halfSize, halfSize, halfSize, - halfSize, 0, 10000 );
+			newCamera.position.copy( oldCamera.position );
+			newCamera.quaternion.copy( oldCamera.quaternion );
+
+			// derive the zoom so the orthographic framing matches the perspective view at the orbit center
+
+			const halfFOV = THREE.MathUtils.DEG2RAD * oldCamera.fov / 2;
+			newCamera.zoom = ( newCamera.top - newCamera.bottom ) / ( 2 * Math.max( distance, 0.0001 ) * Math.tan( halfFOV ) );
+
+		} else {
+
+			newCamera = new THREE.PerspectiveCamera( 50, 1, 0.001, 1e10 );
+			newCamera.quaternion.copy( oldCamera.quaternion );
+
+			// reposition along the view direction so the perspective framing matches the orthographic view
+
+			const halfFOV = THREE.MathUtils.DEG2RAD * newCamera.fov / 2;
+			const targetDistance = ( oldCamera.top - oldCamera.bottom ) / ( 2 * oldCamera.zoom * Math.tan( halfFOV ) );
+
+			const offset = new THREE.Vector3().subVectors( oldCamera.position, center );
+			if ( offset.lengthSq() === 0 ) offset.set( 0, 0, 1 ).applyQuaternion( oldCamera.quaternion );
+			offset.normalize().multiplyScalar( targetDistance );
+
+			newCamera.position.copy( center ).add( offset );
+
+		}
+
+		newCamera.name = oldCamera.name;
+		newCamera.uuid = oldCamera.uuid;
+		newCamera.updateProjectionMatrix();
+
+		this.camera = newCamera;
+		this.cameras[ newCamera.uuid ] = newCamera;
+
+		if ( this.viewportCamera === oldCamera ) this.viewportCamera = newCamera;
+
+		this.signals.cameraResetted.dispatch();
+
+		// keep the selection (and thus the sidebar) in sync with the new camera instance
+
+		if ( this.selected === oldCamera ) this.select( newCamera );
+
+	},
+
 	setViewportCamera: function ( uuid ) {
 
-		this.viewportCamera = this.cameras[ uuid ];
+		this.viewportCamera = this.cameras[ uuid ] || this.camera;
 		this.signals.viewportCameraChanged.dispatch();
 
 	},
@@ -858,6 +963,7 @@ Editor.prototype = {
 		this.history.clear();
 		this.storage.clear();
 
+		this.setCameraType( 'perspective' );
 		this.camera.copy( _DEFAULT_CAMERA );
 		this.signals.cameraResetted.dispatch();
 
@@ -892,6 +998,9 @@ Editor.prototype = {
 
 		this.deselect();
 
+		this.backgroundType = 'Default';
+		this.environmentType = 'Default';
+
 		this.signals.editorCleared.dispatch();
 
 	},
@@ -903,6 +1012,8 @@ Editor.prototype = {
 		var loader = new THREE.ObjectLoader();
 		var camera = await loader.parseAsync( json.camera );
 
+		this.setCameraType( camera.isOrthographicCamera ? 'orthographic' : 'perspective' );
+
 		const existingUuid = this.camera.uuid;
 		const incomingUuid = camera.uuid;
 
@@ -913,20 +1024,23 @@ Editor.prototype = {
 		delete this.cameras[ existingUuid ]; // remove old entry [existingUuid, this.camera]
 		this.cameras[ incomingUuid ] = this.camera; // add new entry [incomingUuid, this.camera]
 
+		if ( json.controls !== undefined ) {
+
+			this.controls.fromJSON( json.controls );
+
+		}
+
 		this.signals.cameraResetted.dispatch();
 
 		this.history.fromJSON( json.history );
 		this.scripts = json.scripts;
 
-		this.setScene( await loader.parseAsync( json.scene ) );
+		const scene = await loader.parseAsync( json.scene );
 
-		if ( json.environment === 'Room' ||
-			 json.environment === 'ModelViewer' /* DEPRECATED */ ) {
+		this.backgroundType = json.backgroundType || 'Default';
+		this.environmentType = json.environmentType || 'Default';
 
-			this.signals.sceneEnvironmentChanged.dispatch( json.environment );
-			this.signals.refreshSidebarEnvironment.dispatch();
-
-		}
+		this.setScene( scene );
 
 	},
 
@@ -949,32 +1063,23 @@ Editor.prototype = {
 
 		}
 
-		// honor neutral environment
-
-		let environment = null;
-
-		if ( this.scene.environment !== null && this.scene.environment.isRenderTargetTexture === true ) {
-
-			environment = 'Room';
-
-		}
-
-		//
-
 		return {
 
 			metadata: {},
 			project: {
+				renderer: this.config.getKey( 'project/renderer/type' ),
 				shadows: this.config.getKey( 'project/renderer/shadows' ),
 				shadowType: this.config.getKey( 'project/renderer/shadowType' ),
 				toneMapping: this.config.getKey( 'project/renderer/toneMapping' ),
 				toneMappingExposure: this.config.getKey( 'project/renderer/toneMappingExposure' )
 			},
 			camera: this.viewportCamera.toJSON(),
+			controls: this.controls.toJSON(),
 			scene: this.scene.toJSON(),
 			scripts: this.scripts,
 			history: this.history.toJSON(),
-			environment: environment
+			backgroundType: this.backgroundType,
+			environmentType: this.environmentType
 
 		};
 

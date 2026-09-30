@@ -1,15 +1,15 @@
 import LightingNode from './LightingNode.js';
-import { cache } from '../core/CacheNode.js';
-import { roughness, clearcoatRoughness } from '../core/PropertyNode.js';
-import { cameraViewMatrix } from '../accessors/Camera.js';
+import { isolate } from '../core/IsolateNode.js';
+import { roughness, clearcoatRoughness, retroreflectivity } from '../core/PropertyNode.js';
+import { cameraWorldMatrix } from '../accessors/Camera.js';
 import { normalView, clearcoatNormalView, normalWorld } from '../accessors/Normal.js';
 import { positionViewDirection } from '../accessors/Position.js';
-import { float } from '../tsl/TSLBase.js';
+import { float, pow4 } from '../tsl/TSLBase.js';
 import { bentNormalView } from '../accessors/AccessorsUtils.js';
 import { pmremTexture } from '../pmrem/PMREMNode.js';
 import { materialEnvIntensity } from '../accessors/MaterialProperties.js';
 
-const _envNodeCache = new WeakMap();
+const _rendererCache = new WeakMap();
 
 /**
  * Represents a physical model for Image-based lighting (IBL). The environment
@@ -55,13 +55,15 @@ class EnvironmentNode extends LightingNode {
 
 			const value = ( envNode.isTextureNode ) ? envNode.value : material[ envNode.property ];
 
-			let cacheEnvNode = _envNodeCache.get( value );
+			const cache = this._getPMREMNodeCache( builder.renderer );
+
+			let cacheEnvNode = cache.get( value );
 
 			if ( cacheEnvNode === undefined ) {
 
 				cacheEnvNode = pmremTexture( value );
 
-				_envNodeCache.set( value, cacheEnvNode );
+				cache.set( value, cacheEnvNode );
 
 			}
 
@@ -74,15 +76,23 @@ class EnvironmentNode extends LightingNode {
 		const useAnisotropy = material.useAnisotropy === true || material.anisotropy > 0;
 		const radianceNormalView = useAnisotropy ? bentNormalView : normalView;
 
-		const radiance = envNode.context( createRadianceContext( roughness, radianceNormalView ) ).mul( materialEnvIntensity );
+		let radiance = isolate( envNode.context( createRadianceContext( roughness, radianceNormalView ) ).mul( materialEnvIntensity ) );
+
+		if ( material.useRetroreflection === true || material.retroreflectivity > 0 ) {
+
+			const retroRadiance = isolate( envNode.context( createRetroRadianceContext( roughness, radianceNormalView ) ).mul( materialEnvIntensity ) );
+
+			radiance = retroreflectivity.clamp().mix( radiance, retroRadiance );
+
+		}
+
 		const irradiance = envNode.context( createIrradianceContext( normalWorld ) ).mul( Math.PI ).mul( materialEnvIntensity );
 
-		const isolateRadiance = cache( radiance );
-		const isolateIrradiance = cache( irradiance );
+		const isolateIrradiance = isolate( irradiance );
 
 		//
 
-		builder.context.radiance.addAssign( isolateRadiance );
+		builder.context.radiance.addAssign( radiance );
 
 		builder.context.iblIrradiance.addAssign( isolateIrradiance );
 
@@ -93,11 +103,34 @@ class EnvironmentNode extends LightingNode {
 		if ( clearcoatRadiance ) {
 
 			const clearcoatRadianceContext = envNode.context( createRadianceContext( clearcoatRoughness, clearcoatNormalView ) ).mul( materialEnvIntensity );
-			const isolateClearcoatRadiance = cache( clearcoatRadianceContext );
+			const isolateClearcoatRadiance = isolate( clearcoatRadianceContext );
 
 			clearcoatRadiance.addAssign( isolateClearcoatRadiance );
 
 		}
+
+	}
+
+	/**
+	 * Returns the PMREM node cache of the current renderer.
+	 *
+	 * @private
+	 * @param {Renderer} renderer - The current renderer.
+	 * @return {WeakMap} The node cache.
+	 */
+	_getPMREMNodeCache( renderer ) {
+
+		let pmremCache = _rendererCache.get( renderer );
+
+		if ( pmremCache === undefined ) {
+
+			pmremCache = new WeakMap();
+
+			_rendererCache.set( renderer, pmremCache );
+
+		}
+
+		return pmremCache;
 
 	}
 
@@ -117,13 +150,41 @@ const createRadianceContext = ( roughnessNode, normalViewNode ) => {
 				reflectVec = positionViewDirection.negate().reflect( normalViewNode );
 
 				// Mixing the reflection with the normal is more accurate and keeps rough objects from gathering light from behind their tangent plane.
-				reflectVec = roughnessNode.mul( roughnessNode ).mix( reflectVec, normalViewNode ).normalize();
+				reflectVec = pow4( roughnessNode ).mix( reflectVec, normalViewNode ).normalize();
 
-				reflectVec = reflectVec.transformDirection( cameraViewMatrix );
+				reflectVec = reflectVec.transformDirection( cameraWorldMatrix );
 
 			}
 
 			return reflectVec;
+
+		},
+		getTextureLevel: () => {
+
+			return roughnessNode;
+
+		}
+	};
+
+};
+
+const createRetroRadianceContext = ( roughnessNode, normalViewNode ) => {
+
+	let retroVec = null;
+
+	return {
+		getUV: () => {
+
+			if ( retroVec === null ) {
+
+				// The retroreflective lobe returns light toward its source, so the environment is sampled along the view direction
+				retroVec = pow4( roughnessNode ).mix( positionViewDirection, normalViewNode ).normalize();
+
+				retroVec = retroVec.transformDirection( cameraWorldMatrix );
+
+			}
+
+			return retroVec;
 
 		},
 		getTextureLevel: () => {

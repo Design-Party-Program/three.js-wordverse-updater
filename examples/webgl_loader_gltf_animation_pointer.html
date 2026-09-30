@@ -4,6 +4,10 @@
 		<title>three.js webgl - animation - keyframes</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgl - animation - keyframes">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgl_loader_gltf_animation_pointer.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgl_loader_gltf_animation_pointer.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 		<style>
 			body {
@@ -31,7 +35,7 @@
 				"imports": {
 					"three": "../build/three.module.js",
 					"three/addons/": "./jsm/",
-          			"@needle-tools/three-animation-pointer": "https://cdn.jsdelivr.net/npm/@needle-tools/three-animation-pointer@1.0.1"
+          			"@needle-tools/three-animation-pointer": "https://cdn.jsdelivr.net/npm/@needle-tools/three-animation-pointer@1.0.7"
 				}
 			}
 		</script>
@@ -46,13 +50,14 @@
 			import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-			import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+			import { DRACOLoader, DRACO_GLTF_CONFIG } from 'three/addons/loaders/DRACOLoader.js';
 			import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 			import { GLTFAnimationPointerExtension } from '@needle-tools/three-animation-pointer';
 
 			let mixer;
 
-			const clock = new THREE.Clock();
+			const timer = new THREE.Timer();
+			timer.connect( document );
 			const container = document.getElementById( 'container' );
 
 			const stats = new Stats();
@@ -70,7 +75,7 @@
 			scene.environment = pmremGenerator.fromScene( new RoomEnvironment(), 0.04 ).texture;
 
 			const camera = new THREE.PerspectiveCamera( 40, window.innerWidth / window.innerHeight, .2, 100 );
-			camera.position.set( -3, 2, 6 );
+			camera.position.set( - 3, 2, 6 );
 
 			const controls = new OrbitControls( camera, renderer.domElement );
 			controls.target.set( 0, 0.5, 0 );
@@ -79,20 +84,21 @@
 			controls.enableDamping = true;
 
 			const dracoLoader = new DRACOLoader();
-			dracoLoader.setDecoderPath( 'jsm/libs/draco/gltf/' );
+			dracoLoader.setDecoderPath( DRACO_GLTF_CONFIG );
 			
 
 			const ktx2Loader = new KTX2Loader()
-				.setTranscoderPath( 'jsm/libs/basis/' )
 				.detectSupport( renderer );
 
 			const loader = new GLTFLoader();
 			loader.setDRACOLoader( dracoLoader );
 			loader.setKTX2Loader( ktx2Loader );
 
-			loader.register(p => {
-				return new GLTFAnimationPointerExtension(p);
-			});
+			loader.register( p => {
+
+				return new GLTFAnimationPointerExtension( p );
+
+			} );
 
 			loader.load( 'https://cloud.needle.tools/-/assets/Z23hmXB27L6Db-optimized/file', function ( gltf ) {
 
@@ -123,7 +129,9 @@
 
 			function animate() {
 
-				const delta = clock.getDelta();
+				timer.update();
+
+				const delta = timer.getDelta();
 
 				mixer.update( delta );
 

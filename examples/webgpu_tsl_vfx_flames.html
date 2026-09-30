@@ -4,14 +4,24 @@
 		<title>three.js webgpu - vfx flames</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<link type="text/css" rel="stylesheet" href="main.css">
+		<meta property="og:title" content="three.js webgpu - vfx flames">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_tsl_vfx_flames.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_tsl_vfx_flames.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
 	</head>
 	<body>
 
 		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js webgpu</a> - vfx flames
-			<br>
-			Inspired by <a href="https://x.com/cmzw_/status/1799648702338158747" target="_blank" rel="noopener">@cmzw_</a>
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>VFX Flames</span>
+			</div>
+
+			<small>
+				Inspired by <a href="https://x.com/cmzw_/status/1799648702338158747" target="_blank" rel="noopener">@cmzw_</a>.
+			</small>
 		</div>
 
 		<script type="importmap">
@@ -28,9 +38,11 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { PI2, oneMinus, spherizeUV, sin, step, texture, time, Fn, uv, vec2, vec3, vec4, mix, billboarding } from 'three/tsl';
+			import { TWO_PI, oneMinus, spherizeUV, sin, step, texture, time, Fn, uv, vec2, vec3, vec4, mix, billboarding } from 'three/tsl';
 
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
 
 			let camera, scene, renderer, controls;
 
@@ -104,7 +116,7 @@
 					mainUv.assign( mainUv.mul( 2, 1 ).sub( vec2( 0.5, 0 ) ) ); // scale
 
 					// gradients
-					const gradient1 = sin( time.mul( 10 ).sub( mainUv.y.mul( PI2 ).mul( 2 ) ) ).toVar();
+					const gradient1 = sin( time.mul( 10 ).sub( mainUv.y.mul( TWO_PI ).mul( 2 ) ) ).toVar();
 					const gradient2 = mainUv.y.smoothstep( 0, 1 ).toVar();
 					mainUv.x.addAssign( gradient1.mul( gradient2 ).mul( 0.2 ) );
 
@@ -145,7 +157,7 @@
 					mainUv.x.addAssign( perlinNoise.x.mul( 0.5 ) );
 
 					// gradients
-					const gradient1 = sin( time.mul( 10 ).sub( mainUv.y.mul( PI2 ).mul( 2 ) ) );
+					const gradient1 = sin( time.mul( 10 ).sub( mainUv.y.mul( TWO_PI ).mul( 2 ) ) );
 					const gradient2 = mainUv.y.smoothstep( 0, 1 );
 					const gradient3 = oneMinus( mainUv.y ).smoothstep( 0, 0.3 );
 					mainUv.x.addAssign( gradient1.mul( gradient2 ).mul( 0.2 ) );
@@ -174,8 +186,8 @@
 
 				// billboarding - follow the camera rotation only horizontally
 
-				flame1Material.vertexNode = billboarding();
-				flame2Material.vertexNode = billboarding();
+				flame1Material.vertexNode = billboarding( { horizontalRotation: true } );
+				flame2Material.vertexNode = billboarding( { horizontalRotation: true } );
 
 				// meshes
 
@@ -196,6 +208,7 @@
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.setAnimationLoop( animate );
+				renderer.inspector = new Inspector();
 				document.body.appendChild( renderer.domElement );
 
 				controls = new OrbitControls( camera, renderer.domElement );

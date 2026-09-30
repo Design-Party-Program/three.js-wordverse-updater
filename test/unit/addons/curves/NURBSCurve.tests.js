@@ -1,8 +1,5 @@
-/* global QUnit */
-
 import { NURBSCurve } from '../../../../examples/jsm/curves/NURBSCurve.js';
-import { MathUtils } from '../../../../src/math/MathUtils.js';
-import { Vector4 } from '../../../../src/math/Vector4.js';
+import { MathUtils, Vector4 } from 'three';
 
 export default QUnit.module( 'Extras', () => {
 

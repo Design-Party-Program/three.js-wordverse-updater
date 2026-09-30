@@ -14,7 +14,7 @@ class RenderObjects {
 	 * Constructs a new render object management component.
 	 *
 	 * @param {Renderer} renderer - The renderer.
-	 * @param {Nodes} nodes - Renderer component for managing nodes related logic.
+	 * @param {NodeManager} nodes - Renderer component for managing nodes related logic.
 	 * @param {Geometries} geometries - Renderer component for managing geometries.
 	 * @param {Pipelines} pipelines - Renderer component for managing pipelines.
 	 * @param {Bindings} bindings - Renderer component for managing bindings.
@@ -32,7 +32,7 @@ class RenderObjects {
 		/**
 		 * Renderer component for managing nodes related logic.
 		 *
-		 * @type {Nodes}
+		 * @type {NodeManager}
 		 */
 		this.nodes = nodes;
 
@@ -68,9 +68,18 @@ class RenderObjects {
 		 * A dictionary that manages render contexts in chain maps
 		 * for each pass ID.
 		 *
+		 * @private
 		 * @type {Object<string,ChainMap>}
 		 */
-		this.chainMaps = {};
+		this._chainMaps = {};
+
+		/**
+		 * Stores all render objects created by this component.
+		 *
+		 * @private
+		 * @type {Set<RenderObject>}
+		 */
+		this._renderObjects = new Set();
 
 	}
 
@@ -91,11 +100,14 @@ class RenderObjects {
 
 		const chainMap = this.getChainMap( passId );
 
-		// reuse chainArray
+		// set chain keys
+
 		_chainKeys[ 0 ] = object;
 		_chainKeys[ 1 ] = material;
 		_chainKeys[ 2 ] = renderContext;
 		_chainKeys[ 3 ] = lightsNode;
+
+		//
 
 		let renderObject = chainMap.get( _chainKeys );
 
@@ -106,6 +118,12 @@ class RenderObjects {
 			chainMap.set( _chainKeys, renderObject );
 
 		} else {
+
+			// update references
+
+			renderObject.camera = camera;
+
+			//
 
 			renderObject.updateClipping( clippingContext );
 
@@ -133,7 +151,14 @@ class RenderObjects {
 
 		}
 
-		_chainKeys.length = 0;
+		// reset chain array
+
+		_chainKeys[ 0 ] = null;
+		_chainKeys[ 1 ] = null;
+		_chainKeys[ 2 ] = null;
+		_chainKeys[ 3 ] = null;
+
+		//
 
 		return renderObject;
 
@@ -147,7 +172,7 @@ class RenderObjects {
 	 */
 	getChainMap( passId = 'default' ) {
 
-		return this.chainMaps[ passId ] || ( this.chainMaps[ passId ] = new ChainMap() );
+		return this._chainMaps[ passId ] || ( this._chainMaps[ passId ] = new ChainMap() );
 
 	}
 
@@ -156,14 +181,22 @@ class RenderObjects {
 	 */
 	dispose() {
 
-		this.chainMaps = {};
+		for ( const renderObject of this._renderObjects ) {
+
+			renderObject.dispose();
+
+		}
+
+		this._renderObjects.clear();
+
+		this._chainMaps = {};
 
 	}
 
 	/**
 	 * Factory method for creating render objects with the given list of parameters.
 	 *
-	 * @param {Nodes} nodes - Renderer component for managing nodes related logic.
+	 * @param {NodeManager} nodes - Renderer component for managing nodes related logic.
 	 * @param {Geometries} geometries - Renderer component for managing geometries.
 	 * @param {Renderer} renderer - The renderer.
 	 * @param {Object3D} object - The 3D object.
@@ -185,12 +218,16 @@ class RenderObjects {
 		renderObject.onDispose = () => {
 
 			this.pipelines.delete( renderObject );
-			this.bindings.delete( renderObject );
+			this.bindings.deleteForRender( renderObject );
 			this.nodes.delete( renderObject );
 
 			chainMap.delete( renderObject.getChainArray() );
 
+			this._renderObjects.delete( renderObject );
+
 		};
+
+		this._renderObjects.add( renderObject );
 
 		return renderObject;
 

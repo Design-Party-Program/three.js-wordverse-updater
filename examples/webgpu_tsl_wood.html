@@ -2,27 +2,34 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8">
-		<title>Three.js WebGPU - Procedural Wood Materials</title>
+		<title>Three.js webgpu - procedural wood materials</title>
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="Three.js webgpu - procedural wood materials">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_tsl_wood.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_tsl_wood.jpg">
 		<meta name="author" content="Logan Seeley"/>
-		<link type="text/css" rel="stylesheet" href="main.css">
+		<link type="text/css" rel="stylesheet" href="example.css">
 		<style>
 
 			body {
 				color:rgb(55, 55, 55);
 			}
 
-			#info a {
-				color:#1cdfe2;
-			}
-
 		</style>
 	</head>
 	<body>
 
-		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> webgpu - tsl procedural wood materials<br/>
-			by Logan Seeley, based on <a href="https://www.youtube.com/watch?v=n7e0vxgBS8A">Lance Phan's Blender tutorial</a>
+		<div id="info" class="invert">
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>Procedural Woord Material</span>
+			</div>
+
+			<small>
+				By Logan Seeley, based on <a href="https://www.youtube.com/watch?v=n7e0vxgBS8A">Lance Phan's Blender tutorial.</a>
+			</small>
 		</div>
 
 		<script type="importmap">
@@ -37,19 +44,23 @@
 		</script>
 
 		<script type="module">
+
 			import * as THREE from 'three';
 			import * as TSL from 'three/tsl';
-			import Stats from 'three/addons/libs/stats.module.js';
+
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
+
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
+
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 			import { FontLoader } from 'three/addons/loaders/FontLoader.js';
 			import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
-			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+
 			import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 			import { WoodNodeMaterial, WoodGenuses, Finishes } from 'three/addons/materials/WoodNodeMaterial.js';
 
-			let scene, base, camera, renderer, controls, stats, font, blockGeometry, gui;
+			let scene, base, camera, renderer, controls, font, blockGeometry, gui;
 
 			// Helper function to get grid position
 			function getGridPosition( woodIndex, finishIndex ) {
@@ -156,16 +167,14 @@
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.toneMapping = THREE.NeutralToneMapping;
 				renderer.toneMappingExposure = 1.0;
+				renderer.inspector = new Inspector();
 				renderer.setAnimationLoop( render );
 				document.body.appendChild( renderer.domElement );
 
 				controls = new OrbitControls( camera, renderer.domElement );
 				controls.target.set( 0, 0, 0.548 );
 
-				stats = new Stats();
-				document.body.appendChild( stats.dom );
-
-				gui = new GUI();
+				gui = renderer.inspector.createParameters( 'Parameters' );
 			
 				font = await new FontLoader().loadAsync( './fonts/helvetiker_regular.typeface.json' );
 
@@ -218,7 +227,7 @@
 						const cube = new THREE.Mesh( blockGeometry, material );
 
 						cube.position.copy( getGridPosition( x, y ) );
-						material.transformationMatrix = new THREE.Matrix4().setPosition( new THREE.Vector3( -0.1, 0, Math.random() ) );
+						material.transformationMatrix = new THREE.Matrix4().setPosition( new THREE.Vector3( - 0.1, 0, Math.random() ) );
 						base.add( cube );
 
 						await new Promise( resolve => setTimeout( resolve, 0 ) );
@@ -234,7 +243,6 @@
 			function render() {
 
 				controls.update();
-				stats.update();
 
 				renderer.render( scene, camera );
 			
@@ -274,7 +282,7 @@
 					smallWarpScale: 2,
 					fineWarpStrength: 0.006,
 					fineWarpScale: 32.8,
-					ringThickness: 1/34,
+					ringThickness: 1 / 34,
 					ringBias: 0.03,
 					ringSizeVariance: 0.03,
 					ringVarianceScale: 4.4,
@@ -283,7 +291,7 @@
 					splotchIntensity: 0.541,
 					cellScale: 910,
 					cellSize: 0.1,
-					darkGrainColor: new THREE.Color( '#0c0504') ,
+					darkGrainColor: new THREE.Color( '#0c0504' ),
 					lightGrainColor: new THREE.Color( '#926c50' ),
 					clearcoat: 1,
 					clearcoatRoughness: 0.2
@@ -297,7 +305,7 @@
 				gui.add( customMaterial, 'fineWarpStrength', 0.0, 0.05, 0.001 ).name( 'fineWarpStrength' );
 				gui.add( customMaterial, 'fineWarpScale', 0.0, 50.0, 0.1 ).name( 'fineWarpScale' );
 				gui.add( customMaterial, 'ringThickness', 0.0, 0.1, 0.001 ).name( 'ringThickness' );
-				gui.add( customMaterial, 'ringBias', -0.2, 0.2, 0.001 ).name( 'ringBias' );
+				gui.add( customMaterial, 'ringBias', - 0.2, 0.2, 0.001 ).name( 'ringBias' );
 				gui.add( customMaterial, 'ringSizeVariance', 0.0, 0.2, 0.001 ).name( 'ringSizeVariance' );
 				gui.add( customMaterial, 'ringVarianceScale', 0.0, 10.0, 0.1 ).name( 'ringVarianceScale' );
 				gui.add( customMaterial, 'barkThickness', 0.0, 1.0, 0.01 ).name( 'barkThickness' );
@@ -312,7 +320,7 @@
 
 				const cube = new THREE.Mesh( blockGeometry, customMaterial );
 
-				customMaterial.transformationMatrix = new THREE.Matrix4().setPosition( new THREE.Vector3( -0.1, 0, Math.random() ) );
+				customMaterial.transformationMatrix = new THREE.Matrix4().setPosition( new THREE.Vector3( - 0.1, 0, Math.random() ) );
 				cube.position.copy( getGridPosition( Math.round( WoodGenuses.length / 2 ), 5 ) );
 
 				base.add( cube );

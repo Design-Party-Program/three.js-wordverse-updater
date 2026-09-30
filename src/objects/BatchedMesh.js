@@ -272,7 +272,7 @@ class BatchedMesh extends Mesh {
 		this._multiDrawCounts = new Int32Array( maxInstanceCount );
 		this._multiDrawStarts = new Int32Array( maxInstanceCount );
 		this._multiDrawCount = 0;
-		this._multiDrawInstances = null;
+		this._multiDrawBytesPerElement = 1;
 
 		// Local matrix per geometry by using data texture
 		this._matricesTexture = null;
@@ -871,10 +871,9 @@ class BatchedMesh extends Mesh {
 	}
 
 	/**
-	 * Repacks the sub geometries in [name] to remove any unused space remaining from
+	 * Repacks the sub geometries in BatchedMesh to remove any unused space remaining from
 	 * previously deleted geometry, freeing up space to add new geometry.
 	 *
-	 * @param {number} instanceId - The ID of the instance to remove from the batch.
 	 * @return {BatchedMesh} A reference to this batched mesh.
 	 */
 	optimize() {
@@ -926,6 +925,7 @@ class BatchedMesh extends Mesh {
 
 					index.array.copyWithin( nextIndexStart, indexStart, indexStart + reservedIndexCount );
 					index.addUpdateRange( nextIndexStart, reservedIndexCount );
+					index.needsUpdate = true;
 
 					geometryInfo.indexStart = nextIndexStart;
 
@@ -946,6 +946,7 @@ class BatchedMesh extends Mesh {
 					const { array, itemSize } = attribute;
 					array.copyWithin( nextVertexStart * itemSize, vertexStart * itemSize, ( vertexStart + reservedVertexCount ) * itemSize );
 					attribute.addUpdateRange( nextVertexStart * itemSize, reservedVertexCount * itemSize );
+					attribute.needsUpdate = true;
 
 				}
 
@@ -956,11 +957,11 @@ class BatchedMesh extends Mesh {
 			nextVertexStart += geometryInfo.reservedVertexCount;
 			geometryInfo.start = geometry.index ? geometryInfo.indexStart : geometryInfo.vertexStart;
 
-			// step the next geometry points to the shifted position
-			this._nextIndexStart = geometry.index ? geometryInfo.indexStart + geometryInfo.reservedIndexCount : 0;
-			this._nextVertexStart = geometryInfo.vertexStart + geometryInfo.reservedVertexCount;
-
 		}
+
+		this._nextIndexStart = nextIndexStart;
+		this._nextVertexStart = nextVertexStart;
+		this._visibilityChanged = true;
 
 		return this;
 
@@ -1102,7 +1103,7 @@ class BatchedMesh extends Mesh {
 	 * Sets the given color to the defined instance.
 	 *
 	 * @param {number} instanceId - The ID of an instance to set the color of.
-	 * @param {Color} color - The color to set the instance to.
+	 * @param {Color|Vector4} color - The color to set the instance to. Use a `Vector4` to also define alpha.
 	 * @return {BatchedMesh} A reference to this batched mesh.
 	 */
 	setColorAt( instanceId, color ) {
@@ -1126,13 +1127,29 @@ class BatchedMesh extends Mesh {
 	 * Returns the color of the defined instance.
 	 *
 	 * @param {number} instanceId - The ID of an instance to get the color of.
-	 * @param {Color} color - The target object that is used to store the method's result.
-	 * @return {Color} The instance's color.
+	 * @param {Color|Vector4} color - The target object that is used to store the method's result.
+	 * @return {Color|Vector4} The instance's color.  Use a `Vector4` to also retrieve alpha.
 	 */
 	getColorAt( instanceId, color ) {
 
 		this.validateInstanceId( instanceId );
-		return color.fromArray( this._colorsTexture.image.data, instanceId * 4 );
+		if ( this._colorsTexture === null ) {
+
+			if ( color.isVector4 ) {
+
+				return color.set( 1, 1, 1, 1 );
+
+			} else {
+
+				return color.setRGB( 1, 1, 1 );
+
+			}
+
+		} else {
+
+			return color.fromArray( this._colorsTexture.image.data, instanceId * 4 );
+
+		}
 
 	}
 
@@ -1187,6 +1204,7 @@ class BatchedMesh extends Mesh {
 		this.validateGeometryId( geometryId );
 
 		this._instanceInfo[ instanceId ].geometryIndex = geometryId;
+		this._visibilityChanged = true;
 
 		return this;
 
@@ -1261,7 +1279,7 @@ class BatchedMesh extends Mesh {
 		// throw an error if it can't be shrunk to the desired size
 		if ( maxInstanceCount < instanceInfo.length ) {
 
-			throw new Error( `BatchedMesh: Instance ids outside the range ${ maxInstanceCount } are being used. Cannot shrink instance count.` );
+			throw new Error( `THREE.BatchedMesh: Instance ids outside the range ${ maxInstanceCount } are being used. Cannot shrink instance count.` );
 
 		}
 
@@ -1313,7 +1331,7 @@ class BatchedMesh extends Mesh {
 		const requiredVertexLength = Math.max( ...validRanges.map( range => range.vertexStart + range.reservedVertexCount ) );
 		if ( requiredVertexLength > maxVertexCount ) {
 
-			throw new Error( `BatchedMesh: Geometry vertex values are being used outside the range ${ maxIndexCount }. Cannot shrink further.` );
+			throw new Error( `THREE.BatchedMesh: Geometry vertex values are being used outside the range ${ maxIndexCount }. Cannot shrink further.` );
 
 		}
 
@@ -1323,7 +1341,7 @@ class BatchedMesh extends Mesh {
 			const requiredIndexLength = Math.max( ...validRanges.map( range => range.indexStart + range.reservedIndexCount ) );
 			if ( requiredIndexLength > maxIndexCount ) {
 
-				throw new Error( `BatchedMesh: Geometry index values are being used outside the range ${ maxIndexCount }. Cannot shrink further.` );
+				throw new Error( `THREE.BatchedMesh: Geometry index values are being used outside the range ${ maxIndexCount }. Cannot shrink further.` );
 
 			}
 
@@ -1457,6 +1475,7 @@ class BatchedMesh extends Mesh {
 		this._geometryInitialized = source._geometryInitialized;
 		this._multiDrawCounts = source._multiDrawCounts.slice();
 		this._multiDrawStarts = source._multiDrawStarts.slice();
+		this._multiDrawBytesPerElement = source._multiDrawBytesPerElement;
 
 		this._indirectTexture = source._indirectTexture.clone();
 		this._indirectTexture.image.data = this._indirectTexture.image.data.slice();
@@ -1480,6 +1499,8 @@ class BatchedMesh extends Mesh {
 	 * method whenever this instance is no longer used in your app.
 	 */
 	dispose() {
+
+		super.dispose();
 
 		// Assuming the geometry is not shared with other meshes
 		this.geometry.dispose();
@@ -1512,7 +1533,19 @@ class BatchedMesh extends Mesh {
 		// the indexed version of the multi draw function requires specifying the start
 		// offset in bytes.
 		const index = geometry.getIndex();
-		const bytesPerElement = index === null ? 1 : index.array.BYTES_PER_ELEMENT;
+		let bytesPerElement = index === null ? 1 : index.array.BYTES_PER_ELEMENT;
+
+
+		// the "wireframe" attribute implicitly creates a line attribute in the renderer, which is double
+		// the vertices to draw (3 lines per triangle) so we multiply the draw counts / starts and make
+		// assumptions about the index buffer byte size.
+		let multiDrawMultiplier = 1;
+		if ( material.wireframe ) {
+
+			multiDrawMultiplier = 2;
+			bytesPerElement = geometry.attributes.position.count > 65535 ? 4 : 2;
+
+		}
 
 		const instanceInfo = this._instanceInfo;
 		const multiDrawStarts = this._multiDrawStarts;
@@ -1524,17 +1557,25 @@ class BatchedMesh extends Mesh {
 
 		const frustum = camera.isArrayCamera ? _frustumArray : _frustum;
 		// prepare the frustum in the local frame
-		if ( perObjectFrustumCulled && ! camera.isArrayCamera ) {
+		if ( perObjectFrustumCulled ) {
 
-			_matrix
-				.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse )
-				.multiply( this.matrixWorld );
+			if ( camera.isArrayCamera ) {
 
-			_frustum.setFromProjectionMatrix(
-				_matrix,
-				camera.coordinateSystem,
-				camera.reversedDepth
-			);
+				frustum.setFromArrayCamera( camera );
+
+			} else {
+
+				_matrix
+					.multiplyMatrices( camera.projectionMatrix, camera.matrixWorldInverse )
+					.multiply( this.matrixWorld );
+
+				frustum.setFromProjectionMatrix(
+					_matrix,
+					camera.coordinateSystem,
+					camera.reversedDepth
+				);
+
+			}
 
 		}
 
@@ -1560,7 +1601,7 @@ class BatchedMesh extends Mesh {
 					let culled = false;
 					if ( perObjectFrustumCulled ) {
 
-						culled = ! frustum.intersectsSphere( _sphere, camera );
+						culled = ! frustum.intersectsSphere( _sphere );
 
 					}
 
@@ -1593,8 +1634,8 @@ class BatchedMesh extends Mesh {
 			for ( let i = 0, l = list.length; i < l; i ++ ) {
 
 				const item = list[ i ];
-				multiDrawStarts[ multiDrawCount ] = item.start * bytesPerElement;
-				multiDrawCounts[ multiDrawCount ] = item.count;
+				multiDrawStarts[ multiDrawCount ] = item.start * bytesPerElement * multiDrawMultiplier;
+				multiDrawCounts[ multiDrawCount ] = item.count * multiDrawMultiplier;
 				indirectArray[ multiDrawCount ] = item.index;
 				multiDrawCount ++;
 
@@ -1617,15 +1658,15 @@ class BatchedMesh extends Mesh {
 						// get the bounds in world space
 						this.getMatrixAt( i, _matrix );
 						this.getBoundingSphereAt( geometryId, _sphere ).applyMatrix4( _matrix );
-						culled = ! frustum.intersectsSphere( _sphere, camera );
+						culled = ! frustum.intersectsSphere( _sphere );
 
 					}
 
 					if ( ! culled ) {
 
 						const geometryInfo = geometryInfoList[ geometryId ];
-						multiDrawStarts[ multiDrawCount ] = geometryInfo.start * bytesPerElement;
-						multiDrawCounts[ multiDrawCount ] = geometryInfo.count;
+						multiDrawStarts[ multiDrawCount ] = geometryInfo.start * bytesPerElement * multiDrawMultiplier;
+						multiDrawCounts[ multiDrawCount ] = geometryInfo.count * multiDrawMultiplier;
 						indirectArray[ multiDrawCount ] = i;
 						multiDrawCount ++;
 
@@ -1639,6 +1680,7 @@ class BatchedMesh extends Mesh {
 
 		indirectTexture.needsUpdate = true;
 		this._multiDrawCount = multiDrawCount;
+		this._multiDrawBytesPerElement = bytesPerElement;
 		this._visibilityChanged = false;
 
 	}

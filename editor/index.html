@@ -29,6 +29,7 @@
 			{
 				"imports": {
 					"three": "../build/three.module.js",
+					"three/webgpu": "../build/three.webgpu.js",
 					"three/addons/": "../examples/jsm/",
 
 					"three/examples/": "../examples/",
@@ -38,7 +39,7 @@
 			}
 		</script>
 
-		<script src="../examples/jsm/libs/draco/draco_encoder.js"></script>
+		<script src="https://cdn.jsdelivr.net/gh/google/draco@1.5.7/javascript/draco_encoder.js"></script>
 
 		<link rel="stylesheet" href="js/libs/codemirror/codemirror.css">
 		<link rel="stylesheet" href="js/libs/codemirror/theme/monokai.css">
@@ -48,8 +49,6 @@
 
 		<script src="js/libs/esprima.js"></script>
 		<script src="js/libs/jsonlint.js"></script>
-
-		<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
 
 		<link rel="stylesheet" href="js/libs/codemirror/addon/dialog.css">
 		<link rel="stylesheet" href="js/libs/codemirror/addon/show-hint.css">
@@ -68,7 +67,6 @@
 		<script src="js/libs/ternjs/comment.js"></script>
 		<script src="js/libs/ternjs/infer.js"></script>
 		<script src="js/libs/ternjs/doc_comment.js"></script>
-		<script src="js/libs/tern-threejs/threejs.js"></script>
 		<script src="js/libs/signals.min.js"></script>
 
 		<script src="./../../../public/js/html2canvas.min.js"></script>
@@ -90,6 +88,10 @@
 			import { Menubar } from './js/Menubar.js';
 			import { Resizer } from './js/Resizer.js';
 			import { VRButton } from 'three/addons/webxr/VRButton.js';
+			import { AnimationResizer } from './js/AnimationResizer.js';
+			import { Animation } from './js/Animation.js';
+
+			import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
 
       import { MqttConnector } from './js/collab/mqtt/MqttConnector.js';
       import { RenderWordpressComponent } from './js/libs/RenderWordpressComponent.js';
@@ -132,6 +134,8 @@
 			window.VRButton = VRButton; // Expose VRButton to APP Scripts (back-compat, editor itself now uses Viewport.XR.js internally)
       
       editor.setSendMQTT(mqttConnectorInstance.sendMqttMessage);
+
+			THREE.ObjectLoader.registerGeometry( 'TextGeometry', TextGeometry );
 
       const viewport = new Viewport( editor );
       document.body.appendChild( viewport.dom );
@@ -469,6 +473,37 @@
         });
       });
 
+			const animation = new Animation( editor );
+			document.body.appendChild( animation.dom );
+
+			const animationResizer = new AnimationResizer( editor );
+			document.body.appendChild( animationResizer.dom );
+
+			editor.signals.animationPanelChanged.add( function ( height ) {
+
+				const visible = height !== false;
+
+				viewport.dom.classList.toggle( 'with-animation', visible );
+				toolbar.dom.classList.toggle( 'with-animation', visible );
+
+				if ( visible ) {
+
+					viewport.dom.style.bottom = height + 'px';
+					toolbar.dom.style.bottom = ( height + 20 ) + 'px';
+
+				} else {
+
+					viewport.dom.style.bottom = '';
+					toolbar.dom.style.bottom = '';
+
+				}
+
+				editor.signals.windowResize.dispatch();
+
+			} );
+
+			//
+
 			editor.storage.init( function () {
 
 				editor.storage.get( async function ( state ) {
@@ -478,6 +513,10 @@
 					if ( state !== undefined ) {
 
 						await editor.fromJSON( state );
+
+					} else {
+
+						editor.signals.sceneEnvironmentChanged.dispatch( 'Default' );
 
 					}
 
@@ -523,9 +562,7 @@
 
 				const signals = editor.signals;
 
-        console.log("signals", signals);
-        console.log("saveState", saveState);
-
+				signals.cameraResetted.add( saveState );
 				signals.geometryChanged.add( saveState );
 				signals.objectAdded.add( saveState );
 				signals.objectChanged.add( saveState );
@@ -607,7 +644,7 @@
 
 			}
 
-			// ServiceWorker
+			// @deprecated, r183
 
 			if ( 'serviceWorker' in navigator ) {
 

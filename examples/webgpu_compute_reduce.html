@@ -3,6 +3,10 @@
 		<title>three.js webgpu - compute reduction</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<meta property="og:title" content="three.js webgpu - compute reduction">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_compute_reduce.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_compute_reduce.jpg">
 		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
 	<body>
@@ -158,7 +162,7 @@
 			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a>
 			<br /> This example demonstrates the performance of various simple parallel reduction kernels.
 			<br /> Reference implementations are translated from the CUDA/WGSL code present in the following books/repos:
-			<br /> Impl. 0 - 2: <a href="https://www.cambridge.org/core/books/programming-in-parallel-with-cuda/C43652A69033C25AD6933368CDBE084C"><i>Programming in Parallel with CUDA</i></a> by <a href="https://people.bss.phy.cam.ac.uk/~rea1/">Richard Ansorge</a>
+			<br /> Impl. 0 - 2: <a href="https://www.cambridge.org/core/books/programming-in-parallel-with-cuda/C43652A69033C25AD6933368CDBE084C"><i>Programming in Parallel with CUDA</i></a> by <a href="https://github.com/RichardAns">Richard Ansorge</a>
 			<br /> Impl. 3: <a href="https://github.com/frost-beta/betann/blob/main/betann/wgsl/reduce_all.wgsl"><i>betann reduce_all kernel</i></a> by <a href="https://github.com/zcbenz">zcbenz</a>
 			<br /> Impl. 4: <a href="https://github.com/b0nes164/GPUPrefixSums/blob/main/GPUPrefixSumsWebGPUapis/SharedShaders/rts.wgsl"><i>GPUPrefixSums reduction approach</i></a> by <a href="https://github.com/b0nes164">b0nes164</a>
 			<div id="left_side_display" style="position: absolute;top: 150px;left: 0;padding: 10px;background: rgba( 0, 0, 0, 0.5 );color: #fff;font-family: monospace;font-size: 12px;line-height: 1.5;pointer-events: none;text-align: left;"></div>
@@ -190,7 +194,7 @@
 		<script type="module">
 
 			import * as THREE from 'three/webgpu';
-			import { instancedArray, Loop, If, vec3, dot, clamp, storage, uvec4, subgroupAdd, uniform, uv, uint, float, Fn, vec2, invocationLocalIndex, invocationSubgroupIndex, uvec2, floor, instanceIndex, workgroupId, workgroupBarrier, workgroupArray, subgroupSize, select, log2 } from 'three/tsl';
+			import { instancedArray, Loop, If, vec3, dot, clamp, storage, uvec4, subgroupAdd, uniform, uv, uint, float, Fn, vec2, invocationLocalIndex, invocationSubgroupIndex, uvec2, floor, instanceIndex, workgroupId, workgroupBarrier, workgroupArray, subgroupSize, select, countTrailingZeros } from 'three/tsl';
 
 			import WebGPU from 'three/addons/capabilities/WebGPU.js';
 
@@ -677,7 +681,7 @@
 
 				const fnDef = Fn( () => {
 
-					const inputSize = uint( inputBuffer.bufferCount.length );
+					const inputSize = uint( inputBuffer.bufferCount );
 					const rowOffset = workgroupId.x.mul( rowSize );
 
 					// If the current rows elements exceed the bounds of the input
@@ -831,12 +835,12 @@
 
 					// Multiple approaches here
 					// log2(subgroupSize) -> TSL log2 function
-					// countTrailingZeros/findLSB(subgroupSize) -> Currently unsupported function in TSL that counts trailing zeros in number bit representation
+					// countTrailingZeros/findLSB(subgroupSize) -> TSL function that counts trailing zeros in number bit representation
 					// Can technically petition GPU for subgroupSize in shader and calculate logs on CPU at cost of shader being generalizable across devices
 					// May also break if subgroupSize changes when device is lost or if program is rerun on lower power device
-					const subgroupSizeLog = uint( log2( float( subgroupSize ) ) ).toVar( 'subgroupSizeLog' );
+					const subgroupSizeLog = countTrailingZeros( subgroupSize ).toVar( 'subgroupSizeLog' );
 					const spineSize = uint( workgroupSize ).shiftRight( subgroupSizeLog );
-					const spineSizeLog = uint( log2( float( spineSize ) ) ).toVar( 'spineSizeLog' );
+					const spineSizeLog = countTrailingZeros( spineSize ).toVar( 'spineSizeLog' );
 
 
 					// Align size to powers of subgroupSize
@@ -929,14 +933,14 @@
 
 				const scene = new THREE.Scene();
 
-				const array = new Uint32Array( Array.from( { length: size }, ( _, i ) => {
+				const array = new Uint32Array( Array.from( { length: size }, () => {
 
 					return 1;
 
 				} ) );
 
 				// Represents array of data as uints in compute shader.
-				const inputStorage = instancedArray( array, 'uint', size ).setPBO( true ).setName( `Current_${leftSideDisplay ? 'Left' : 'Right'}` );
+				const inputStorage = instancedArray( array, 'uint' ).setPBO( true ).setName( `Current_${leftSideDisplay ? 'Left' : 'Right'}` );
 				// Represents array of data as vec4s in compute shader;
 				const inputVec4BufferAttribute = new THREE.StorageInstancedBufferAttribute( array, 4 );
 				const inputVectorizedStorage = storage( inputVec4BufferAttribute, 'uvec4', vecSize ).setPBO( true ).setName( `CurrentVectorized_${leftSideDisplay ? 'Left' : 'Right'}` );
@@ -947,9 +951,9 @@
 				const rowSize = divRoundUp( size, numRows );
 
 				const workgroupSumsArray = new Uint32Array( numRows );
-				const workgroupSumsStorage = instancedArray( workgroupSumsArray, 'uint', numRows ).setPBO( true ).setName( `WorkgroupSums_${leftSideDisplay ? 'Left' : 'Right'}` );
+				const workgroupSumsStorage = instancedArray( workgroupSumsArray, 'uint' ).setPBO( true ).setName( `WorkgroupSums_${leftSideDisplay ? 'Left' : 'Right'}` );
 				const debugArray = new Uint32Array( 1024 );
-				const debugStorage = instancedArray( debugArray, 'uint', 1024 ).setPBO( true ).setName( `Debug_${leftSideDisplay ? 'Left' : 'Right'}` );
+				const debugStorage = instancedArray( debugArray, 'uint' ).setPBO( true ).setName( `Debug_${leftSideDisplay ? 'Left' : 'Right'}` );
 
 				const buffers = {
 					'Input Buffer': inputStorage,
@@ -963,7 +967,15 @@
 				functionObj[ logFunctionName ] = async() => {
 
 					const selectedBuffer = buffers[ unifiedEffectController.loggedBuffer ];
-					console.log( new Uint32Array( await renderer.getArrayBufferAsync( selectedBuffer.value ) ) );
+					const readbackBuffer = new THREE.ReadbackBuffer( selectedBuffer.value );
+
+					const result = new Uint32Array( await renderer.getArrayBufferAsync( readbackBuffer ) );
+
+					console.log( result );
+
+					// Remove GPU/CPU readback buffer from memory
+
+					readbackBuffer.dispose();
 
 				};
 
@@ -990,8 +1002,10 @@
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth / 2, window.innerHeight );
 
+				await renderer.init();
+
 				// Unfortunately, need to arbitrarily run compute shader to get access to device limits
-				await renderer.computeAsync( computeResetBuffer );
+				renderer.compute( computeResetBuffer );
 
 
 				if ( renderer.backend.device !== null ) {
@@ -1254,8 +1268,8 @@
 
 					if ( state === 'Reset' ) {
 
-						renderer.computeAsync( computeResetBuffer );
-						renderer.computeAsync( computeResetWorkgroupSums );
+						renderer.compute( computeResetBuffer );
+						renderer.compute( computeResetWorkgroupSums );
 
 					} else if ( state === 'Run Algo' ) {
 
@@ -1275,7 +1289,7 @@
 
 									const reduce0 = reduce0Calls[ i ];
 									// Do a reduction step
-									renderer.computeAsync( reduce0 );
+									renderer.compute( reduce0 );
 									renderer.resolveTimestampsAsync( THREE.TimestampQuery.COMPUTE );
 
 									m /= 2;
@@ -1293,7 +1307,7 @@
 
 								for ( let i = 0; i < currentAlgoCalls.length; i ++ ) {
 
-									renderer.computeAsync( currentAlgoCalls[ i ] );
+									renderer.compute( currentAlgoCalls[ i ] );
 									renderer.resolveTimestampsAsync( THREE.TimestampQuery.COMPUTE );
 
 								}

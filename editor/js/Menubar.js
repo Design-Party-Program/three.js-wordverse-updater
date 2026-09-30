@@ -15,6 +15,7 @@ import { MenubarSaveButtons} from './Menubar.Save.buttons.js';
 import { MenubarWordpressComponents } from './Menubar.WordpressComponents.js';
 import { MenubarSvg } from './Menubar.Svg.js';
 import { MenubarConnectionStatus } from './Menubar.ConnectionStatus.js';
+import { MenubarRender } from './Menubar.Render.js';
 function Menubar( editor, mqttConnection ) {
 
 	const container = new UIPanel();
@@ -23,6 +24,7 @@ function Menubar( editor, mqttConnection ) {
 	// container.add( new MenubarVrScenes( editor ) );
 	// container.add( new MenubarSave( editor ) );
 	container.add( new MenubarSaveButtons( editor ) );
+	container.add( new MenubarRender( editor ) );
 
   // add a button for save / upload with picture: images/controls/Font_Awesome_5_solid_cloud-upload-alt
 	

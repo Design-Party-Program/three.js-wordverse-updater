@@ -1,7 +1,5 @@
 //
 // Custom QUnit assertions.
-///* global QUnit */
-
 import { SmartComparer } from './SmartComparer.js';
 import { ObjectLoader } from '../../../src/loaders/ObjectLoader.js';
 
@@ -143,7 +141,7 @@ function checkGeometryJsonWriting( geom, json ) {
 
 	// All parameters from json should be transferred to the geometry.
 	// json is flat. Ignore first level json properties that are not parameters.
-	const notParameters = [ 'metadata', 'uuid', 'type' ];
+	const notParameters = [ 'metadata', 'uuid', 'type', 'name' ];
 	keys = Object.keys( json );
 	for ( let i = 0, l = keys.length; i < l; i ++ ) {
 

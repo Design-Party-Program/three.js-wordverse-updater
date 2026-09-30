@@ -4,25 +4,26 @@
 		<title>three.js webgpu - postprocessing dof - basic</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<link type="text/css" rel="stylesheet" href="main.css">
-		<style>
-			body {
-				touch-action: none;
-				color: #000000;
-				background: #90D5FF;
-			}
-			a {
-				color: #2983ff;
-			}
-		</style>
+		<meta property="og:title" content="three.js webgpu - postprocessing dof - basic">
+		<meta property="og:type" content="website">
+		<meta property="og:url" content="https://threejs.org/examples/webgpu_postprocessing_dof_basic.html">
+		<meta property="og:image" content="https://threejs.org/examples/screenshots/webgpu_postprocessing_dof_basic.jpg">
+		<link type="text/css" rel="stylesheet" href="example.css">
 	</head>
 	<body>
 
 		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - DOF - basic</a><br />
-			<a href="https://skfb.ly/opNFG" target="_blank" rel="noopener">Bath day</a> by 
-			<a href="https://sketchfab.com/stanst" target="_blank" rel="noopener">Stan.St</a> is licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">Creative Commons Attribution</a>.<br />
-			Click on a position in the scene to focus it.<br />
+			<a href="https://threejs.org/" target="_blank" rel="noopener" class="logo-link"></a>
+
+			<div class="title-wrapper">
+				<a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a><span>DoF Basic</span>
+			</div>
+
+			<small>
+				Performant Depth-of-Field effect with a simple box blur. Click on a position in the scene to focus it.<br />
+				<a href="https://skfb.ly/opNFG" target="_blank" rel="noopener">Bath day</a> by 
+				<a href="https://sketchfab.com/stanst" target="_blank" rel="noopener">Stan.St</a> is licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">Creative Commons Attribution</a>.<br />
+			</small>
 		</div>
 
 		<script type="importmap">
@@ -46,12 +47,12 @@
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 			import { UltraHDRLoader } from 'three/addons/loaders/UltraHDRLoader.js';
-			import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+			import { DRACOLoader, DRACO_GLTF_CONFIG } from 'three/addons/loaders/DRACOLoader.js';
 
-			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			import { Inspector } from 'three/addons/inspector/Inspector.js';
 			import TWEEN from 'three/addons/libs/tween.module.js';
 
-			let camera, controls, scene, timer, renderer, model, mixer, raycaster, postProcessing;
+			let camera, controls, scene, timer, renderer, model, mixer, raycaster, renderPipeline;
 
 			const pointerCoords = new THREE.Vector2();
 			const focusPoint = new THREE.Vector3( 1, 1.75, - 0.4 );
@@ -77,7 +78,7 @@
 				timer = new THREE.Timer();
 
 				const dracoLoader = new DRACOLoader();
-				dracoLoader.setDecoderPath( 'jsm/libs/draco/gltf/' );
+				dracoLoader.setDecoderPath( DRACO_GLTF_CONFIG );
 			
 				const loader = new GLTFLoader();
 				loader.setDRACOLoader( dracoLoader );
@@ -93,10 +94,9 @@
 				//
 
 				const hdrLoader = new UltraHDRLoader();
-				hdrLoader.setDataType( THREE.HalfFloatType );
 				const envMap = await hdrLoader.loadAsync( 'textures/equirectangular/spruit_sunrise_2k.hdr.jpg' );
 				envMap.mapping = THREE.EquirectangularReflectionMapping;
-				scene.environmentRotation.y = Math.PI * 0.5;
+				scene.environmentRotation.y = Math.PI * - 0.5;
 				scene.environment = envMap;
 
 				// renderer
@@ -105,13 +105,14 @@
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
 				renderer.setAnimationLoop( animate );
+				renderer.inspector = new Inspector();
 				renderer.toneMapping = THREE.NeutralToneMapping;
 				document.body.appendChild( renderer.domElement );
 
 				// post processing
 
-				postProcessing = new THREE.PostProcessing( renderer );
-				postProcessing.outputColorTransform = false;
+				renderPipeline = new THREE.RenderPipeline( renderer );
+				renderPipeline.outputColorTransform = false;
 
 				// DOF uniforms
 
@@ -124,7 +125,7 @@
 
 				const scenePass = pass( scene, camera );
 			
-				const scenePassColor = scenePass.getTextureNode();
+				const scenePassColor = scenePass.getTextureNode().toInspector( 'Color' );
 				const scenePassViewZ = scenePass.getViewZNode();
 				const scenePassBlurred = boxBlur( scenePassColor, { size: blurSize, separation: blurSpread } );
 
@@ -136,11 +137,11 @@
 				const outputPass = renderOutput( dofPass );
 				const fxaaPass = fxaa( outputPass );
 
-				postProcessing.outputNode = fxaaPass;
+				renderPipeline.outputNode = fxaaPass;
 
 				// GUI
 
-				const gui = new GUI();
+				const gui = renderer.inspector.createParameters( 'Settings' );
 				gui.add( minDistance, 'value', 0, 3 ).name( 'min distance' );
 				gui.add( maxDistance, 'value', 0, 5 ).name( 'max distance' );
 				gui.add( blurSize, 'value', 1, 3, 1 ).name( 'blur size' );
@@ -205,7 +206,7 @@
 				camera.updateMatrixWorld();
 				focusPointView.value.copy( focusPoint ).applyMatrix4( camera.matrixWorldInverse );
 
-				postProcessing.render();
+				renderPipeline.render();
 
 
 			}
