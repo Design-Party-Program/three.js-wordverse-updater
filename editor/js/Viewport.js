@@ -671,6 +671,15 @@ function Viewport( editor ) {
 
 				useBackgroundAsEnvironment = true;
 
+				if ( pmremGenerator === null ) {
+
+					// renderer (e.g. WebGPURenderer) hasn't finished initializing yet;
+					// rendererCreated re-dispatches this signal once it's ready
+
+					break;
+
+				}
+
 				if ( scene.background !== null ) {
 
 					if ( scene.background.isColor ) {
