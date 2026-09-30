@@ -17,7 +17,7 @@ function Config() {
 
 		'project/camera': 'perspective',
 
-		'project/renderer/type': 'WebGLRenderer',
+		'project/renderer/type': 'WebGPURenderer',
 		'project/renderer/antialias': false,
 		'project/renderer/shadows': false,
 		'project/renderer/shadowType': 1, // PCF
