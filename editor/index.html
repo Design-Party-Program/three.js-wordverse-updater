@@ -25,6 +25,19 @@
 		<link rel="stylesheet" href="css/main.css">
 
 		<script src="./../../js/mqttws31.js"></script>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.module.js",
+					"three/addons/": "../examples/jsm/",
+
+					"three/examples/": "../examples/",
+					"three-gpu-pathtracer": "https://cdn.jsdelivr.net/npm/three-gpu-pathtracer@0.0.23/build/index.module.js",
+					"three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.7.4/build/index.module.js"
+				}
+			}
+		</script>
+
 		<script src="../examples/jsm/libs/draco/draco_encoder.js"></script>
 
 		<link rel="stylesheet" href="js/libs/codemirror/codemirror.css">
@@ -36,7 +49,7 @@
 		<script src="js/libs/esprima.js"></script>
 		<script src="js/libs/jsonlint.js"></script>
 
-		<script src="js/libs/ffmpeg.min.js" defer></script>
+		<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
 
 		<link rel="stylesheet" href="js/libs/codemirror/addon/dialog.css">
 		<link rel="stylesheet" href="js/libs/codemirror/addon/show-hint.css">
@@ -63,15 +76,6 @@
 		<!-- Import maps polyfill -->
 		<!-- Remove this when import maps will be widely supported -->
 		<script async src="js/libs/es-module-shims.js"></script>
-
-		<script type="importmap">
-			{
-				"imports": {
-					"three": "../build/three.module.js",
-					"three/addons/": "../examples/jsm/"
-				}
-			}
-		</script>
 
 		<script type="module">
 
@@ -125,7 +129,7 @@
 
 			window.editor = editor; // Expose editor to Console
 			window.THREE = THREE; // Expose THREE to APP Scripts and Console
-			window.VRButton = VRButton; // Expose VRButton to APP Scripts
+			window.VRButton = VRButton; // Expose VRButton to APP Scripts (back-compat, editor itself now uses Viewport.XR.js internally)
       
       editor.setSendMQTT(mqttConnectorInstance.sendMqttMessage);
 
@@ -467,13 +471,13 @@
 
 			editor.storage.init( function () {
 
-				editor.storage.get( function ( state ) {
+				editor.storage.get( async function ( state ) {
 
 					if ( isLoadingFromHash ) return;
 
 					if ( state !== undefined ) {
 
-						editor.fromJSON( state );
+						await editor.fromJSON( state );
 
 					}
 
@@ -586,7 +590,7 @@
 
 				const file = hash.slice( 6 );
 
-				if ( confirm( 'Any unsaved data will be lost. Are you sure?' ) ) {
+				if ( confirm( editor.strings.getKey( 'prompt/file/open' ) ) ) {
 
 					const loader = new THREE.FileLoader();
 					loader.crossOrigin = '';
