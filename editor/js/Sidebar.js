@@ -1,6 +1,7 @@
 import { UITabbedPanel, UISpan } from './libs/ui.js';
 
 import { SidebarScene } from './Sidebar.Scene.js';
+import { SidebarAlign } from './Sidebar.Align.js';
 import { SidebarProperties } from './Sidebar.Properties.js';
 import { SidebarProject } from './Sidebar.Project.js';
 import { SidebarSettings } from './Sidebar.Settings.js';
@@ -16,6 +17,7 @@ function Sidebar( editor ) {
 
 	const scene = new UISpan().add(
 		new SidebarScene( editor ),
+		new SidebarAlign( editor ),
 		sidebarProperties
 	);
 	const project = new SidebarProject( editor );
