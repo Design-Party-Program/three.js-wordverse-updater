@@ -47,6 +47,21 @@ function SidebarAlign( editor ) {
 
 	}
 
+	container.add( new UIText( 'DISTRIBUTE EVENLY' ).setFontSize( '12px' ).setMarginBottom( '6px' ).setMarginTop( '10px' ) );
+
+	const distributeRow = new UIRow();
+
+	for ( const axis of [ 'x', 'y', 'z' ] ) {
+
+		const button = new UIButton( axis.toUpperCase() );
+		button.setMarginLeft( '4px' );
+		button.onClick( () => distribute( axis ) );
+		distributeRow.add( button );
+
+	}
+
+	container.add( distributeRow );
+
 	const _box = new THREE.Box3();
 	const _objectBox = new THREE.Box3();
 
@@ -55,6 +70,44 @@ function SidebarAlign( editor ) {
 		if ( 'min' === mode ) return box.min[ axis ];
 		if ( 'max' === mode ) return box.max[ axis ];
 		return ( box.min[ axis ] + box.max[ axis ] ) / 2;
+
+	}
+
+	/**
+	 * Moves `object` by `delta` along `axis`, recording an undo-able command +
+	 * MQTT sync, into the shared `commands` accumulator (skips near-zero deltas).
+	 */
+	function moveOnAxis( object, axis, delta, commands ) {
+
+		if ( Math.abs( delta ) < 1e-6 ) return;
+
+		const oldPosition = object.position.clone();
+		object.position[ axis ] += delta;
+
+		editor.sendMqtt(
+			'setObjectPosition',
+			{
+				objectName: object.name,
+				uuid: object.uuid,
+				newPosition: object.position,
+			}
+		);
+
+		commands.push( new SetPositionCommand( editor, object, object.position, oldPosition ) );
+
+	}
+
+	function commit( commands ) {
+
+		if ( commands.length === 1 ) {
+
+			editor.execute( commands[ 0 ] );
+
+		} else if ( commands.length > 1 ) {
+
+			editor.execute( new MultiCmdsCommand( editor, commands ) );
+
+		}
 
 	}
 
@@ -71,35 +124,48 @@ function SidebarAlign( editor ) {
 		for ( const object of selection ) {
 
 			_objectBox.setFromObject( object, true );
-
-			const delta = target - extentOf( _objectBox, axis, mode );
-			if ( Math.abs( delta ) < 1e-6 ) continue;
-
-			const oldPosition = object.position.clone();
-			object.position[ axis ] += delta;
-
-			editor.sendMqtt(
-				'setObjectPosition',
-				{
-					objectName: object.name,
-					uuid: object.uuid,
-					newPosition: object.position,
-				}
-			);
-
-			commands.push( new SetPositionCommand( editor, object, object.position, oldPosition ) );
+			moveOnAxis( object, axis, target - extentOf( _objectBox, axis, mode ), commands );
 
 		}
 
-		if ( commands.length === 1 ) {
+		commit( commands );
 
-			editor.execute( commands[ 0 ] );
+	}
 
-		} else if ( commands.length > 1 ) {
+	/**
+	 * Distributes selected objects' centers evenly between the two extreme
+	 * members along `axis` (Photoshop-style "distribute centers"); the first
+	 * and last objects (by position on that axis) stay fixed.
+	 */
+	function distribute( axis ) {
 
-			editor.execute( new MultiCmdsCommand( editor, commands ) );
+		const selection = selector.selection;
+		if ( selection.length < 3 ) return;
 
-		}
+		const entries = selection.map( ( object ) => {
+
+			_objectBox.setFromObject( object, true );
+			return { object, center: extentOf( _objectBox, axis, 'mid' ) };
+
+		} );
+
+		entries.sort( ( a, b ) => a.center - b.center );
+
+		const first = entries[ 0 ].center;
+		const last = entries[ entries.length - 1 ].center;
+		const step = ( last - first ) / ( entries.length - 1 );
+
+		const commands = [];
+
+		entries.forEach( ( entry, index ) => {
+
+			if ( index === 0 || index === entries.length - 1 ) return;
+
+			moveOnAxis( entry.object, axis, ( first + step * index ) - entry.center, commands );
+
+		} );
+
+		commit( commands );
 
 	}
 
