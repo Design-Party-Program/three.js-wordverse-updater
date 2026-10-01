@@ -1,7 +1,9 @@
 import { UIPanel, UIText, UIRow, UIInput } from './libs/ui.js';
+import { clone } from 'three/addons/utils/SkeletonUtils.js';
 
 import { MultiCmdsCommand } from './commands/MultiCmdsCommand.js';
 import { RemoveObjectCommand } from './commands/RemoveObjectCommand.js';
+import { AddObjectCommand } from './commands/AddObjectCommand.js';
 
 function SidebarSettingsShortcuts( editor ) {
 
@@ -17,6 +19,8 @@ function SidebarSettingsShortcuts( editor ) {
 
 	const config = editor.config;
 	const signals = editor.signals;
+
+	let clipboard = [];
 
 	const container = new UIPanel();
 
@@ -97,6 +101,62 @@ function SidebarSettingsShortcuts( editor ) {
 	}
 
 	document.addEventListener( 'keydown', function ( event ) {
+
+		const activeTag = document.activeElement ? document.activeElement.tagName : '';
+		const isEditingText = activeTag === 'INPUT' || activeTag === 'TEXTAREA' ||
+			( document.activeElement && document.activeElement.isContentEditable );
+
+		if ( ! isEditingText && ( event.ctrlKey || event.metaKey ) ) {
+
+			const key = event.key.toLowerCase();
+
+			if ( key === 'c' ) {
+
+				event.preventDefault();
+
+				clipboard = editor.selector.selection
+					.filter( ( object ) => object.parent !== null ) // avoid copying the camera or scene
+					.map( ( object ) => clone( object ) );
+
+				return;
+
+			}
+
+			if ( key === 'v' ) {
+
+				event.preventDefault();
+
+				if ( clipboard.length === 0 ) return;
+
+				// clone the stored templates (not the templates themselves) so repeated
+				// pastes don't share object references, and nudge so copies don't sit
+				// exactly on top of the originals
+				const commands = clipboard.map( ( template ) => {
+
+					const object = clone( template );
+					object.position.x += 0.5;
+					object.position.z += 0.5;
+					return new AddObjectCommand( editor, object );
+
+				} );
+
+				if ( commands.length === 1 ) {
+
+					editor.execute( commands[ 0 ] );
+
+				} else {
+
+					editor.execute( new MultiCmdsCommand( editor, commands ) );
+
+				}
+
+				editor.selector.setSelection( commands.map( ( command ) => command.object ) );
+
+				return;
+
+			}
+
+		}
 
 		switch ( event.key.toLowerCase() ) {
 
