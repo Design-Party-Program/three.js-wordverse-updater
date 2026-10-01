@@ -794,42 +794,8 @@ class MqttConnector {
           console.log(`No action taken for MQTT message "${arrMessageObj.message}"`, arrMessageObj);
         }
       }else if(arrMessageObj.message === 'addModel' && !this.#editor.objectByUuid(arrMessageObj.content.uuid)){
-        fetch("/wp-json/wp/v2/vr-model/"+arrMessageObj.content.modelId)
-        .then(modelResult => modelResult.json())
-        .then(modelData => {
-          
-          console.log("modelData",modelData);
-          const modelMediaId = modelData.acf.model_file || modelData.acf.gltf_file || modelData.acf.fbx_file;
-          fetch("https://"+window.location.hostname+"/wp-json/wp/v2/media/"+modelMediaId)
-          .then(modelGltfResult => modelGltfResult.json())
-          .then(modelGltfData => {
-            console.log("modelGltfData", modelGltfData);
-            fetch(modelGltfData.source_url)
-            .then(modelGltfFile => modelGltfFile.blob())
-            .then(modelGltfBlob => {
-              modelGltfBlob.name = modelGltfData.source_url;//.split("/").pop();
-              modelGltfBlob.lastModified = new Date();
-              const loaderResult = this.#editor.loader.loadFiles( [modelGltfBlob], "https://wordverse.designpartyprogram.nl", 
-              [ {
-                  position:{x:0,y:0,z:0},
-                  scale:{
-                    x:modelData.acf.scale, 
-                    y:modelData.acf.scale, 
-                    z:modelData.acf.scale
-                  },
-                  rotation:{x:0,y:0,z:0},
-                  wpData:modelData,
-                  uuid:arrMessageObj.content.uuid
-                },  
-              ])
-              //.then(model => {
-              /*   model.position.x = modelModel.position_x;
-                model.position.y = modelModel.position_y;
-                model.position.z = modelModel.position_z;
-              });*/
-              });
-            });
-          });
+        // shared with the local "add model" flow so both sides load the model identically
+        addWpModelToScene( arrMessageObj.content.modelId, arrMessageObj.content.uuid, this.#editor );
       }else{
         console.log(`No action implemented for MQTT message "${arrMessageObj.message}"`, arrMessageObj);
       }

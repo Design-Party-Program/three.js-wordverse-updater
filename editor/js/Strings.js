@@ -456,7 +456,7 @@ function Strings( config ) {
 			'menubar/vrScenes': 'VR Post Types',
 			'menubar/vrScenes/newScene': 'Create New VR Scene',
       
-			'menubar/models': '3D Models',
+			'menubar/models': 'Add model to scene',
 			'menubar/models/newModel': 'Add New Model',
       
 			'menubar/save': 'Save Scene',

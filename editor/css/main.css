@@ -1032,3 +1032,149 @@ hr {
 	transform: translate(0, 0);
 	z-index: 0;
 }
+
+/* Add model to scene modal */
+
+.wv-model-modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	background: rgba(0, 0, 0, 0.6);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 10000;
+}
+
+.wv-model-modal {
+	display: flex;
+	flex-direction: column;
+	width: 420px;
+	max-width: calc(100vw - 40px);
+	max-height: calc(100vh - 40px);
+	padding: 16px;
+	background: #eee;
+	color: #333;
+	border-radius: 4px;
+	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+	font-size: 12px;
+}
+
+.wv-model-modal-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 10px;
+}
+
+.wv-model-modal-title {
+	font-weight: bold;
+	font-size: 14px;
+}
+
+.wv-model-modal-close {
+	padding: 0 4px;
+	background: transparent;
+	border: none;
+	color: #666;
+	font-size: 18px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.wv-model-modal-search {
+	padding: 6px 8px;
+	margin-bottom: 10px;
+	border: 1px solid #ccc;
+	border-radius: 3px;
+}
+
+.wv-model-modal-grid {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 8px;
+	min-height: 288px;
+}
+
+.wv-model-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 6px;
+	background: #fff;
+	border: 1px solid #ddd;
+	border-radius: 3px;
+	cursor: pointer;
+	overflow: hidden;
+}
+
+.wv-model-card:hover {
+	border-color: #08f;
+	box-shadow: 0 0 0 1px #08f;
+}
+
+.wv-model-card-thumb {
+	width: 100%;
+	height: 80px;
+	background: #ddd;
+	border-radius: 2px;
+	object-fit: cover;
+}
+
+.wv-model-card-thumb-placeholder {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #999;
+	font-size: 11px;
+}
+
+.wv-model-card-name {
+	width: 100%;
+	margin-top: 4px;
+	overflow: hidden;
+	text-align: center;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wv-model-modal-empty {
+	display: none;
+	padding: 20px 0;
+	color: #888;
+	text-align: center;
+}
+
+.wv-model-modal-pagination {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-top: 10px;
+}
+
+.wv-model-modal-page-button {
+	padding: 4px 10px;
+	cursor: pointer;
+}
+
+.wv-model-modal-page-button:disabled {
+	cursor: default;
+	opacity: 0.4;
+}
+
+.wv-model-modal-add-new {
+	margin-top: 12px;
+	padding: 8px;
+	background: #08f;
+	color: #fff;
+	border: none;
+	border-radius: 3px;
+	cursor: pointer;
+	font-weight: bold;
+}
+
+.wv-model-modal-add-new:hover {
+	background: #0670cc;
+}
