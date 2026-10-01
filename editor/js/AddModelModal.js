@@ -28,8 +28,8 @@ async function fetchModels() {
 	const sceneId = getSceneId();
 	const url = new URL( '/wp-json/wp/v2/vr-model', window.location.origin );
 	url.searchParams.set( 'per_page', '100' );
-	url.searchParams.set( 'orderby', 'title' );
-	url.searchParams.set( 'order', 'asc' );
+	url.searchParams.set( 'orderby', 'modified' );
+	url.searchParams.set( 'order', 'desc' );
 	if ( sceneId ) url.searchParams.set( 'scene_id', sceneId );
 
 	const nonce = getNonce();
