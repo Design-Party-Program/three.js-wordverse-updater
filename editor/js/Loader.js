@@ -10,8 +10,6 @@ import { SetSceneCommand } from './commands/SetSceneCommand.js';
 
 import { LoaderUtils } from './LoaderUtils.js';
 
-import { GLTFImportDialog } from './GLTFImportDialog.js';
-
 import { unzipSync, strFromU8 } from 'three/addons/libs/fflate.module.js';
 
 function Loader( editor ) {
@@ -379,8 +377,7 @@ function Loader( editor ) {
 
 					try {
 
-						const dialog = new GLTFImportDialog( editor.strings );
-						const options = await dialog.show();
+						const options = { asScene: false };
 
 const loader = await createGLTFLoader();
 
@@ -436,8 +433,7 @@ const loader = await createGLTFLoader();
 
 					try {
 
-						const dialog = new GLTFImportDialog( editor.strings );
-						const options = await dialog.show();
+						const options = { asScene: false };
 
 						const loader = await createGLTFLoader( manager );
           console.log("texture path", path);
@@ -1866,8 +1862,7 @@ const loader = await createGLTFLoader();
 
 					try {
 
-						const dialog = new GLTFImportDialog( editor.strings );
-						const options = await dialog.show();
+						const options = { asScene: false };
 
 						const loader = await createGLTFLoader();
 
@@ -1908,8 +1903,7 @@ const loader = await createGLTFLoader();
 
 					try {
 
-						const dialog = new GLTFImportDialog( editor.strings );
-						const options = await dialog.show();
+						const options = { asScene: false };
 
 						const loader = await createGLTFLoader( manager );
           console.log("texture path", path);
