@@ -345,18 +345,17 @@ Editor.prototype = {
             // Give hydra time to initialise before evaluating code
             await new Promise(function(resolve) { setTimeout(resolve, 150); });
 
-            // Evaluate each line, binding every hydraInstance.synth method (osc, shape,
-            // noise, ...) as a local so generators nested as arguments (e.g.
-            // mask(shape(...))) resolve too, not just the outermost chained call
+            // Evaluate the whole script as one program (not line-by-line) so
+            // multi-line chains like `osc(...)\n.color(...)\n.out()` parse
+            // correctly, binding every hydraInstance.synth method (osc, shape,
+            // noise, ...) as a local so nested generator arguments (e.g.
+            // mask(shape(...))) resolve too, not just the outermost call
             const synthKeys = Object.keys(hydraInstance.synth);
             const synthValues = synthKeys.map(function(k) { return hydraInstance.synth[k]; });
-            const lines = textureCode.split(/\r?\n/).filter(function(l) { return l.trim(); });
-            for (const line of lines) {
-              try {
-                new Function(synthKeys.join(','), line.trim()).apply(null, synthValues); // eslint-disable-line no-new-func
-              } catch(e) {
-                console.warn('Hydra eval error on line:', line, e);
-              }
+            try {
+              new Function(synthKeys.join(','), textureCode).apply(null, synthValues); // eslint-disable-line no-new-func
+            } catch(e) {
+              console.warn('Hydra eval error:', textureCode, e);
             }
 
             const canvasTexture = new THREE.CanvasTexture(hydraCanvas);

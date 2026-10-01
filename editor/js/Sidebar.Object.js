@@ -620,10 +620,10 @@ function SidebarObject( editor ) {
 				await new Promise( function ( r ) { setTimeout( r, 150 ); } );
 				var synthKeys = Object.keys( hydraInstance.synth );
 				var synthValues = synthKeys.map( function ( k ) { return hydraInstance.synth[ k ]; } );
-				code.split( /\r?\n/ ).filter( function ( l ) { return l.trim(); } ).forEach( function ( line ) {
-					try { new Function( synthKeys.join( ',' ), line.trim() ).apply( null, synthValues ); } // eslint-disable-line no-new-func
-					catch ( e ) { console.warn( 'Hydra eval:', line, e ); }
-				} );
+				// Evaluate the whole script as one program (not line-by-line) so
+				// multi-line chains like `osc(...)\n.color(...)\n.out()` parse correctly
+				try { new Function( synthKeys.join( ',' ), code ).apply( null, synthValues ); } // eslint-disable-line no-new-func
+				catch ( e ) { console.warn( 'Hydra eval:', code, e ); }
 				var tex = new THREE.CanvasTexture( hydraCanvas );
 				tex.needsUpdate = true;
 				object.traverse( function ( child ) {
