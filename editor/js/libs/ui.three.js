@@ -485,6 +485,20 @@ class UIOutliner extends UIDiv {
 				new SetPositionCommand( editor, object, newLocalPosition, oldPosition ),
 			] ) );
 
+			// sync the reparent + recalculated position to other collaborators,
+			// reusing the same message types the Ctrl+G grouping feature sends
+			editor.sendMqtt( 'setObjectPosition', {
+				objectName: object.name,
+				uuid: object.uuid,
+				newPosition: newLocalPosition,
+			} );
+
+			editor.sendMqtt( 'moveObject', {
+				uuid: object.uuid,
+				newParentUuid: newParent.uuid,
+				index: newParent.children.indexOf( object ),
+			} );
+
 			const changeEvent = new Event( 'change', { bubbles: true, cancelable: true } );
 			scope.dom.dispatchEvent( changeEvent );
 
