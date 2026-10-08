@@ -105,6 +105,22 @@ function ViewportControls( editor ) {
 
 	}
 
+	// ACF's REST output only resolves file fields to a URL when the request
+	// includes ?acf_format=standard; the editor's model fetches don't, so
+	// lod_high/medium/low usually arrive as a raw attachment ID instead
+	async function resolveMediaUrl( value ) {
+
+		if ( ! value ) return null;
+		if ( typeof value === 'string' && /^https?:\/\//i.test( value ) ) return value;
+
+		const mediaId = ( value && typeof value === 'object' ) ? ( value.ID || value.id ) : value;
+		if ( ! mediaId ) return null;
+
+		const media = await fetch( '/wp-json/wp/v2/media/' + mediaId ).then( ( r ) => r.json() );
+		return media.source_url || null;
+
+	}
+
 	async function applyLodLevel( level ) {
 
 		for ( const object of editor.scene.children ) {
@@ -128,8 +144,8 @@ function ViewportControls( editor ) {
 
 			}
 
-			const lodUrl = wpData.acf && wpData.acf[ level ];
-			if ( ! lodUrl ) continue; // no LOD generated for this tier yet - leave the model as-is
+			const lodValue = wpData.acf && wpData.acf[ level ];
+			if ( ! lodValue ) continue; // no LOD generated for this tier yet - leave the model as-is
 
 			object.userData._wvLodCache = object.userData._wvLodCache || {};
 
@@ -137,11 +153,14 @@ function ViewportControls( editor ) {
 
 				try {
 
+					const lodUrl = await resolveMediaUrl( lodValue );
+					if ( ! lodUrl ) continue;
+
 					object.userData._wvLodCache[ level ] = await loadLodChildren( lodUrl );
 
 				} catch ( err ) {
 
-					console.error( 'LOD preview: failed to load', level, lodUrl, err );
+					console.error( 'LOD preview: failed to load', level, lodValue, err );
 					continue;
 
 				}
