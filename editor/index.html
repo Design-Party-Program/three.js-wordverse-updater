@@ -187,6 +187,35 @@
         editor.scene.background = new THREE.Color(vrSceneData.acf.skycolor);
         editor.scene.userData = {...editor.scene.userData, wpData:vrSceneData};
 
+        // Ctrl+G group containers must exist before any member below reparents into them
+        vrSceneData.acf.groups && vrSceneData.acf.groups.map(groupProps => {
+          const group = new THREE.Group();
+          group.uuid = groupProps.uuid;
+          group.name = groupProps.name || 'Group';
+          group.userData.wvIsGroupContainer = true;
+          if (groupProps.position) {
+            group.position.x = groupProps.position.x;
+            group.position.y = groupProps.position.y;
+            group.position.z = groupProps.position.z;
+          }
+          // NOTE: the "groups" ACF repeater's rotation subfield is misnamed
+          // "position_copy" (a leftover from cloning the position field when
+          // it was created) - rename it to "rotation" in ACF and update this
+          // key accordingly once fixed.
+          if (groupProps.position_copy) {
+            group.rotation.x = groupProps.position_copy.x;
+            group.rotation.y = groupProps.position_copy.y;
+            group.rotation.z = groupProps.position_copy.z;
+          }
+          if (groupProps.scale) {
+            group.scale.x = groupProps.scale.x;
+            group.scale.y = groupProps.scale.y;
+            group.scale.z = groupProps.scale.z;
+          }
+          editor.execute( new AddObjectCommand( editor, group ) );
+          return group;
+        } );
+
         let mesh = false;
         vrSceneData.acf.primitives && vrSceneData.acf.primitives.map(primitiveProps => {
             console.log("primitiveProps", primitiveProps);
@@ -268,6 +297,8 @@
                 imageTexture: primitiveProps.imageTexture || null,
                 texture: primitiveProps.texture || null,
                 videoTexture: primitiveProps.videoTexture || null,
+                colorTexture: primitiveProps.colorTexture || null,
+                group_uuid: primitiveProps.group_uuid || null,
             };
             mesh ? editor.execute( new AddObjectAndSetMetaCommand( editor, mesh, primProps)) : console.log('no mesh for '+primitiveProps.type);
             return mesh ? true : false;
@@ -320,6 +351,7 @@
                 scale: lightProps.scale,
                 position: lightProps.position,
                 rotation: lightProps.rotation,
+                group_uuid: lightProps.group_uuid || null,
             };
             light ? editor.execute( new AddObjectAndSetMetaCommand( editor, light, primProps)) : console.log('no mesh for '+lightProps.type);
             return light ? true : false;
@@ -357,6 +389,8 @@
                           imageTexture:vrSceneModel.imageTexture || null,
                           texture:vrSceneModel.texture || null,
                           videoTexture:vrSceneModel.videoTexture || null,
+                          colorTexture:vrSceneModel.colorTexture || null,
+                          group_uuid:vrSceneModel.group_uuid || null,
                           // name: vrSceneModelData.title.rendered
                       } ]
                     );
@@ -422,6 +456,8 @@
                   imageTexture: vrSvg.imageTexture || null,
                   texture: vrSvg.texture || null,
                   videoTexture: vrSvg.videoTexture || null,
+                  colorTexture: vrSvg.colorTexture || null,
+                  group_uuid: vrSvg.group_uuid || null,
                 },  
               ));
 

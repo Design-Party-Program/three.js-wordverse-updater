@@ -5,8 +5,29 @@
       const wpElements = [];
       const primitives = [];
       const lights = [];
+      const groups = [];
 
-      editor.scene.children.map(model => {
+      // the uuid of the immediate parent Ctrl+G group, or "" if top-level
+      const _groupUuidOf = ( model ) =>
+        ( model.parent && model.parent.userData && model.parent.userData.wvIsGroupContainer ) ? model.parent.uuid : "";
+
+      const walk = ( model ) => {
+
+        if ( model.userData && model.userData.wvIsGroupContainer ) {
+          groups.push( {
+            uuid: model.uuid,
+            name: model.name,
+            position: model.position,
+            scale: model.scale,
+            rotation: {
+              x: model.rotation._x,
+              y: model.rotation._y,
+              z: model.rotation._z
+            },
+          } );
+          model.children.forEach( walk );
+          return;
+        }
 
         // compile a query and send it to the api
 
@@ -29,6 +50,7 @@
               texture: model.userData.texture || "",
               videoTexture: model.userData.videoTexture || "",
               colorTexture: model.userData.colorTexture || "",
+              group_uuid: _groupUuidOf( model ),
             });
           }
 
@@ -49,6 +71,7 @@
               texture: model.userData.texture || "",
               videoTexture: model.userData.videoTexture || "",
               colorTexture: model.userData.colorTexture || "",
+              group_uuid: _groupUuidOf( model ),
             } )
           }
 
@@ -65,6 +88,7 @@
                 y: model.rotation._y,
                 z: model.rotation._z
               },
+              group_uuid: _groupUuidOf( model ),
             } )
           }
 
@@ -80,7 +104,8 @@
                 x:model.rotation._x,
                 y:model.rotation._y,
                 z:model.rotation._z
-              }
+              },
+              group_uuid: _groupUuidOf( model ),
             });
           }
 
@@ -96,16 +121,19 @@
                 y: model.rotation._y,
                 z: model.rotation._z
               },
+              group_uuid: _groupUuidOf( model ),
             } )
 
           }
 
         }
 
-      });
-      console.log(vrModels, lights, primitives, wpElements);
+      };
+
+      editor.scene.children.forEach( walk );
+      console.log(vrModels, lights, primitives, wpElements, groups);
       return {
-        vrModels, lights, primitives, wpElements
+        vrModels, lights, primitives, wpElements, groups
       }
     }
 

@@ -198,6 +198,44 @@ class MqttConnector {
         console.log('sceneLiveUpdate', arrMessageObj.content.sceneData, arrMessageObj.content.sceneData);
         this.#sceneIsLoading.state = 3;
 
+        // Ctrl+G group containers must exist before any member below reparents into them
+        ( arrMessageObj.content.sceneData.groups || [] ).forEach( groupProps => {
+          if ( this.#editor.objectByUuid( groupProps.uuid ) ) return;
+
+          const group = new THREE.Group();
+          group.uuid = groupProps.uuid;
+          group.name = groupProps.name || 'Group';
+          group.userData.wvIsGroupContainer = true;
+          if ( groupProps.position ) {
+            group.position.x = groupProps.position.x;
+            group.position.y = groupProps.position.y;
+            group.position.z = groupProps.position.z;
+          }
+          // NOTE: the "groups" ACF repeater's rotation subfield is misnamed
+          // "position_copy" (leftover from cloning the position field) - rename
+          // it to "rotation" in ACF and update this key accordingly once fixed.
+          if ( groupProps.position_copy ) {
+            group.rotation.x = groupProps.position_copy.x;
+            group.rotation.y = groupProps.position_copy.y;
+            group.rotation.z = groupProps.position_copy.z;
+          }
+          if ( groupProps.scale ) {
+            group.scale.x = groupProps.scale.x;
+            group.scale.y = groupProps.scale.y;
+            group.scale.z = groupProps.scale.z;
+          }
+          this.#editor.scene.add( group );
+        } );
+
+        const _reparentIntoGroup = ( object, groupUuid ) => {
+          if ( ! groupUuid ) return;
+          const targetGroup = this.#editor.objectByUuid( groupUuid );
+          if ( ! targetGroup || object.parent === targetGroup ) return;
+          if ( object.parent ) object.parent.children.splice( object.parent.children.indexOf( object ), 1 );
+          targetGroup.children.push( object );
+          object.parent = targetGroup;
+        };
+
         arrMessageObj.content.sceneData.vrModels.map(async model => {
           var modelInstance = this.#editor.objectByUuid(model.uuid);
           if(!modelInstance){
@@ -256,6 +294,7 @@ class MqttConnector {
               content: { uuid: model.uuid, imageTexture: model.imageTexture || '', texture: model.texture || '', videoTexture: model.videoTexture || '', colorTexture: model.colorTexture || '' }
             }) });
           }
+          _reparentIntoGroup( modelInstance, model.group_uuid );
         });
         arrMessageObj.content.sceneData.primitives.map(async subject => {
           var subjectInstance = this.#editor.objectByUuid(subject.uuid);
@@ -307,6 +346,8 @@ class MqttConnector {
           catch (err){
             console.log(err);
           }
+
+          _reparentIntoGroup( subjectInstance, subject.group_uuid );
 
         });
         arrMessageObj.content.sceneData.lights.map(async subject => {

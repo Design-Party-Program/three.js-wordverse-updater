@@ -252,7 +252,19 @@ Editor.prototype = {
         object.scale.y = meta.scale.y;
         object.scale.z = meta.scale.z;
       }
-      
+
+      // Ctrl+G group membership: reparent into the matching group container,
+      // which Menubar.VrScenes.js/MqttConnector.js must create before this
+      // object loads. Falls back to staying top-level if the group isn't found.
+      if ( meta.group_uuid ) {
+        const targetGroup = this.objectByUuid( meta.group_uuid );
+        if ( targetGroup ) {
+          this.scene.children.splice( this.scene.children.indexOf( object ), 1 );
+          targetGroup.children.push( object );
+          object.parent = targetGroup;
+        }
+      }
+
       object.userData = meta.wpData ? {...object.userData, wpData:meta.wpData} : object.userData;
 
       // Persist texture source fields so the Sidebar can read + re-apply them
