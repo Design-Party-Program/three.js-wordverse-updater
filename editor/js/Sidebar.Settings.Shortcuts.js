@@ -6,6 +6,7 @@ import { MultiCmdsCommand } from './commands/MultiCmdsCommand.js';
 import { RemoveObjectCommand } from './commands/RemoveObjectCommand.js';
 import { AddObjectCommand } from './commands/AddObjectCommand.js';
 import { MoveObjectCommand } from './commands/MoveObjectCommand.js';
+import { SetPositionCommand } from './commands/SetPositionCommand.js';
 
 function SidebarSettingsShortcuts( editor ) {
 
@@ -171,13 +172,26 @@ function SidebarSettingsShortcuts( editor ) {
 				// undo/redo sync, since its children are tracked independently
 				group.userData.wvIsGroupContainer = true;
 
-				// the group is given an identity transform and added at the scene
-				// root (where multi-selected objects already live), so reparenting
-				// into it doesn't change any object's effective world transform
+				// center the group's own pivot on the selection's combined bounding
+				// box (matches how most 3D tools place a new group's origin), then
+				// re-express each member's position relative to that new pivot so
+				// nothing visually jumps
+				const selectionBox = new THREE.Box3();
+				editor.selector.getSelectionBox( selectionBox );
+				const center = selectionBox.getCenter( new THREE.Vector3() );
+				group.position.copy( center );
+
 				const commands = [ new AddObjectCommand( editor, group ) ];
+				const newPositions = new Map();
 
 				for ( const object of selection ) {
 
+					const oldPosition = object.position.clone();
+					const newPosition = oldPosition.clone().sub( center );
+					object.position.copy( newPosition );
+					newPositions.set( object, newPosition );
+
+					commands.push( new SetPositionCommand( editor, object, newPosition, oldPosition ) );
 					commands.push( new MoveObjectCommand( editor, object, group ) );
 
 				}
@@ -203,6 +217,14 @@ function SidebarSettingsShortcuts( editor ) {
 				} );
 
 				groupChildren.forEach( ( object, index ) => {
+
+					// remote clients must re-express the member's position relative to
+					// the new group pivot too, same as the local newPositions computed above
+					editor.sendMqtt( 'setObjectPosition', {
+						objectName: object.name,
+						uuid: object.uuid,
+						newPosition: newPositions.get( object ),
+					} );
 
 					editor.sendMqtt( 'moveObject', {
 						uuid: object.uuid,
