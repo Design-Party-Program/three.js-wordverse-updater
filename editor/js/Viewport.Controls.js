@@ -1,4 +1,5 @@
 import { UIPanel, UISelect } from './libs/ui.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 function ViewportControls( editor ) {
 
@@ -51,6 +52,8 @@ function ViewportControls( editor ) {
 		shadingSelect.setValue( 'solid' );
 		editor.setViewportShading( shadingSelect.getValue() );
 
+		lodSelect.setValue( 'auto' );
+
 	} );
 
 	signals.cameraResetted.add( update );
@@ -58,6 +61,101 @@ function ViewportControls( editor ) {
 	update();
 
 	//
+
+	// LOD preview (local only, not synced/saved) - swaps each vr-model's
+	// displayed geometry between its full-res source and the lod_high/medium/low
+	// GLBs generated server-side, without touching position/rotation/scale/uuid
+
+	const lodSelect = new UISelect();
+	lodSelect.setMarginRight( '10px' );
+	lodSelect.setOptions( { 'auto': 'LOD: Full', 'lod_high': 'LOD: High', 'lod_medium': 'LOD: Medium', 'lod_low': 'LOD: Low' } );
+	lodSelect.setValue( 'auto' );
+	lodSelect.onChange( function () {
+
+		applyLodLevel( this.getValue() );
+
+	} );
+	container.add( lodSelect );
+
+	function clearChildren( object ) {
+
+		while ( object.children.length ) {
+
+			object.remove( object.children[ 0 ] );
+
+		}
+
+	}
+
+	function adoptChildren( object, children ) {
+
+		children.forEach( ( child ) => object.add( child ) );
+
+	}
+
+	function loadLodChildren( url ) {
+
+		return fetch( url )
+			.then( ( response ) => response.arrayBuffer() )
+			.then( ( buffer ) => new Promise( ( resolve, reject ) => {
+
+				new GLTFLoader().parse( buffer, '', ( gltf ) => resolve( gltf.scene.children.slice() ), reject );
+
+			} ) );
+
+	}
+
+	async function applyLodLevel( level ) {
+
+		for ( const object of editor.scene.children ) {
+
+			const wpData = object.userData && object.userData.wpData;
+			if ( ! wpData || wpData.type !== 'vr-model' ) continue;
+
+			// cache the originally-loaded (full-res) children once, so "Full" can
+			// restore them without re-fetching the source model
+			if ( ! object.userData._wvOriginalChildren ) {
+
+				object.userData._wvOriginalChildren = object.children.slice();
+
+			}
+
+			if ( level === 'auto' ) {
+
+				clearChildren( object );
+				adoptChildren( object, object.userData._wvOriginalChildren );
+				continue;
+
+			}
+
+			const lodUrl = wpData.acf && wpData.acf[ level ];
+			if ( ! lodUrl ) continue; // no LOD generated for this tier yet - leave the model as-is
+
+			object.userData._wvLodCache = object.userData._wvLodCache || {};
+
+			if ( ! object.userData._wvLodCache[ level ] ) {
+
+				try {
+
+					object.userData._wvLodCache[ level ] = await loadLodChildren( lodUrl );
+
+				} catch ( err ) {
+
+					console.error( 'LOD preview: failed to load', level, lodUrl, err );
+					continue;
+
+				}
+
+			}
+
+			clearChildren( object );
+			adoptChildren( object, object.userData._wvLodCache[ level ] );
+
+		}
+
+		editor.signals.sceneGraphChanged.dispatch();
+
+	}
 
 	function updateCameraList() {
 
