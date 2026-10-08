@@ -388,6 +388,16 @@ class MqttConnector {
         document.getElementById('splash').classList.add('hidden');
       }else if(arrMessageObj.message === 'removeObject' && this.#editor.objectByUuid(arrMessageObj.content.uuid)){
         this.#editor.removeObject(this.#editor.objectByUuid(arrMessageObj.content.uuid));
+      }else if(arrMessageObj.message === 'reAddObject' && !this.#editor.objectByUuid(arrMessageObj.content.uuid)){
+        // Undo/redo of an add or delete: the object isn't in our scene (anymore), so
+        // it's sent fully serialized rather than just referenced by uuid.
+        const loader = new THREE.ObjectLoader();
+        const object = loader.parse(arrMessageObj.content.objectJSON);
+        const parent = this.#editor.objectByUuid(arrMessageObj.content.parentUuid) || this.#editor.scene;
+        parent.children.splice(arrMessageObj.content.index, 0, object);
+        object.parent = parent;
+        object.dispatchEvent({ type: 'added' });
+        this.#editor.signals.sceneGraphChanged.dispatch();
       }else if(arrMessageObj.message === 'setObjectTexture'){
         const subjectObject = this.#editor.objectByUuid(arrMessageObj.content.uuid);
         if (subjectObject) {
