@@ -398,6 +398,15 @@ class MqttConnector {
         object.parent = parent;
         object.dispatchEvent({ type: 'added' });
         this.#editor.signals.sceneGraphChanged.dispatch();
+      }else if(arrMessageObj.message === 'moveObject' && this.#editor.objectByUuid(arrMessageObj.content.uuid)){
+        // Reparent (e.g. Ctrl+G grouping): object already exists remotely, just moved
+        const object = this.#editor.objectByUuid(arrMessageObj.content.uuid);
+        const newParent = this.#editor.objectByUuid(arrMessageObj.content.newParentUuid) || this.#editor.scene;
+        if (object.parent) object.parent.children.splice(object.parent.children.indexOf(object), 1);
+        newParent.children.splice(arrMessageObj.content.index, 0, object);
+        object.parent = newParent;
+        object.dispatchEvent({ type: 'added' });
+        this.#editor.signals.sceneGraphChanged.dispatch();
       }else if(arrMessageObj.message === 'setObjectTexture'){
         const subjectObject = this.#editor.objectByUuid(arrMessageObj.content.uuid);
         if (subjectObject) {

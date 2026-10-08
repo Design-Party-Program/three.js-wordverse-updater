@@ -167,6 +167,9 @@ function SidebarSettingsShortcuts( editor ) {
 
 				const group = new THREE.Group();
 				group.name = 'Group';
+				// marks this as a grouping container (vs. a regular model) for MQTT
+				// undo/redo sync, since its children are tracked independently
+				group.userData.wvIsGroupContainer = true;
 
 				// the group is given an identity transform and added at the scene
 				// root (where multi-selected objects already live), so reparenting
@@ -182,6 +185,32 @@ function SidebarSettingsShortcuts( editor ) {
 				editor.execute( new MultiCmdsCommand( editor, commands ) );
 
 				editor.selector.select( group );
+
+				// remote clients don't have the new group yet, so send it fully
+				// serialized; each reparented member is then moved into it by uuid.
+				// Children are excluded from this JSON (remote already has them as
+				// separate top-level objects) and reparented individually below instead.
+				const groupChildren = group.children.slice();
+				group.children = [];
+				const groupJSON = group.toJSON();
+				group.children = groupChildren;
+
+				editor.sendMqtt( 'reAddObject', {
+					uuid: group.uuid,
+					parentUuid: editor.scene.uuid,
+					index: editor.scene.children.indexOf( group ),
+					objectJSON: groupJSON,
+				} );
+
+				groupChildren.forEach( ( object, index ) => {
+
+					editor.sendMqtt( 'moveObject', {
+						uuid: object.uuid,
+						newParentUuid: group.uuid,
+						index: index,
+					} );
+
+				} );
 
 				return;
 

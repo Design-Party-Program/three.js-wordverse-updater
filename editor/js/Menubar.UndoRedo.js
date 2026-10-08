@@ -44,9 +44,7 @@ function MenubarUndoRedo( editor ) {
 	 * object's state AFTER the command ran (same either way, so direction
 	 * doesn't matter here) and sending the same message type the live editing
 	 * action would have sent. Only command types that already have a
-	 * corresponding live-sync message can be mirrored this way; MoveObjectCommand
-	 * (Ctrl+G grouping) has no forward sync yet, so its undo/redo isn't
-	 * broadcast either — see Sidebar.Settings.Shortcuts.js.
+	 * corresponding live-sync message can be mirrored this way.
 	 */
 	function broadcastCommandSync( cmd ) {
 
@@ -74,6 +72,16 @@ function MenubarUndoRedo( editor ) {
 				editor.sendMqtt( 'setObjectScale', { objectName: object.name, uuid: object.uuid, newScale: object.scale } );
 				break;
 
+			case 'MoveObjectCommand':
+				// reparent (e.g. Ctrl+G grouping, or manual outliner drag-drop); object
+				// already exists remotely, so it's just referenced by uuid, not serialized
+				editor.sendMqtt( 'moveObject', {
+					uuid: object.uuid,
+					newParentUuid: object.parent ? object.parent.uuid : null,
+					index: object.parent ? object.parent.children.indexOf( object ) : 0,
+				} );
+				break;
+
 			case 'RemoveObjectCommand':
 			case 'AddObjectCommand':
 
@@ -81,6 +89,23 @@ function MenubarUndoRedo( editor ) {
 
 					// object is gone (redo of a delete, or undo of an add) — same message the delete shortcut sends
 					editor.sendMqtt( 'removeObject', { uuid: object.uuid } );
+
+				} else if ( object.userData && object.userData.wvIsGroupContainer ) {
+
+					// Ctrl+G group container: its children are tracked independently and
+					// already exist remotely, so exclude them from the serialized JSON
+					// to avoid duplicating them — they stay reparented into it regardless
+					const groupChildren = object.children.slice();
+					object.children = [];
+					const objectJSON = object.toJSON();
+					object.children = groupChildren;
+
+					editor.sendMqtt( 'reAddObject', {
+						uuid: object.uuid,
+						parentUuid: object.parent.uuid,
+						index: object.parent.children.indexOf( object ),
+						objectJSON: objectJSON,
+					} );
 
 				} else {
 
