@@ -456,10 +456,12 @@ class MqttConnector {
                 }
                 const hydraInstance = new window.Hydra({ detectAudio: false, makeGlobal: false, canvas: hydraCanvas });
                 await new Promise(function(r) { setTimeout(r, 150); });
-                textureCode.split(/\r?\n/).filter(function(l) { return l.trim(); }).forEach(function(line) {
-                  try { eval('hydraInstance.synth.' + line.trim()); } // eslint-disable-line no-eval
-                  catch(e) { console.warn('Hydra eval (remote):', line, e); }
-                });
+                // Evaluate the whole script as one program (not line-by-line) so multi-line
+                // chains and nested generator args resolve correctly (see local apply path)
+                const synthKeys = Object.keys(hydraInstance.synth);
+                const synthValues = synthKeys.map(function(k) { return hydraInstance.synth[k]; });
+                try { new Function(synthKeys.join(','), textureCode).apply(null, synthValues); } // eslint-disable-line no-new-func
+                catch(e) { console.warn('Hydra eval (remote):', textureCode, e); }
                 const tex = new THREE.CanvasTexture(hydraCanvas);
                 tex.needsUpdate = true;
                 subjectObject.traverse(function(child) {
