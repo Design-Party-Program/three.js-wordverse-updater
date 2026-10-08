@@ -43,6 +43,7 @@ function MenubarSave( editor ) {
               imageTexture: model.userData.imageTexture || "",
               texture: model.userData.texture || "",
               videoTexture: model.userData.videoTexture || "",
+              colorTexture: model.userData.colorTexture || "",
             });
           }
 
@@ -62,6 +63,7 @@ function MenubarSave( editor ) {
               imageTexture: model.userData.imageTexture || "",
               texture: model.userData.texture || "",
               videoTexture: model.userData.videoTexture || "",
+              colorTexture: model.userData.colorTexture || "",
             } )
           }
 

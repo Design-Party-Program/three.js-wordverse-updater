@@ -480,6 +480,22 @@ function SidebarObject( editor ) {
 	objectVideoTexLabelRow.add( objectVideoTexLabel );
 	container.add( objectVideoTexLabelRow );
 
+	// Color swatch + apply/clear buttons
+	const objectColorTexRow = new UIRow();
+	const objectColorTexPicker = new UIColor().setValue( '#ffffff' );
+	const objectColorTexApply = new UIButton( 'Apply Color' ).setMarginLeft( '4px' ).onClick( function () {
+		_applyColorTexture( editor.selected, objectColorTexPicker.getValue() );
+	} );
+	const objectColorTexClear = new UIButton( '✕' ).onClick( function () {
+		_applyColorTexture( editor.selected, null );
+	} );
+	objectColorTexClear.dom.title = 'Remove color texture';
+	objectColorTexRow.add( new UIText( 'Color' ).setWidth( '90px' ) );
+	objectColorTexRow.add( objectColorTexPicker );
+	objectColorTexRow.add( objectColorTexApply );
+	objectColorTexRow.add( objectColorTexClear );
+	container.add( objectColorTexRow );
+
 	const objectHydraScriptRow = new UIRow();
 	const objectHydraScript = new UITextArea().setWidth( '150px' ).setHeight( '72px' ).setFontSize( '11px' );
 	objectHydraScript.dom.style.fontFamily = 'monospace';
@@ -522,11 +538,13 @@ function SidebarObject( editor ) {
 		root.userData.imageTexture = mediaId;
 		root.userData.texture = '';
 		root.userData.videoTexture = '';
+		root.userData.colorTexture = '';
 		objectHydraScript.setValue( '' );
 		objectVideoTexLabel.setValue( '' );
+		objectColorTexPicker.setValue( '#ffffff' );
 		objectImageTexPreviewImg.src = imageUrl;
 		objectImageTexPreviewImg.style.display = 'block';
-		editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: mediaId, texture: '', videoTexture: '' } );
+		editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: mediaId, texture: '', videoTexture: '', colorTexture: '' } );
 		var img = new Image();
 		img.crossOrigin = 'anonymous';
 		img.onload = function () {
@@ -573,6 +591,40 @@ function SidebarObject( editor ) {
 		_applyHydraTexture( object, code, videoUrl );
 	}
 
+	// ── helper: apply a flat color as the material (clears image/video/hydra) ──
+	function _applyColorTexture( object, hexColor ) {
+		if ( ! object ) return;
+		const root = _resolveTextureRoot( object );
+		if ( ! hexColor ) {
+			root.userData.colorTexture = '';
+			editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: '', texture: '', videoTexture: '', colorTexture: '' } );
+			return;
+		}
+		root.userData.colorTexture = hexColor;
+		root.userData.imageTexture = '';
+		root.userData.texture = '';
+		root.userData.videoTexture = '';
+		objectImageTexPreviewImg.style.display = 'none';
+		objectImageTexPreviewImg.src = '';
+		objectVideoTexLabel.setValue( '' );
+		objectHydraScript.setValue( '' );
+		objectColorTexPicker.setValue( hexColor );
+		editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: '', texture: '', videoTexture: '', colorTexture: hexColor } );
+		object.traverse( function ( child ) {
+			if ( child.isMesh ) {
+				var mats = Array.isArray( child.material ) ? child.material : [ child.material ];
+				mats.forEach( function ( mat ) {
+					var m = mat.clone();
+					m.map = null;
+					m.color.set( hexColor );
+					m.needsUpdate = true;
+					child.material = m;
+				} );
+			}
+		} );
+		editor.signals.sceneGraphChanged.dispatch();
+	}
+
 	// ── helper: bootstrap Hydra and apply a code string live ─────────────────
 	function _extractVideoFromHydra( code ) {
 		if ( ! code ) return null;
@@ -585,6 +637,8 @@ function SidebarObject( editor ) {
 		const root = _resolveTextureRoot( object );
 		root.userData.texture = code;
 		root.userData.imageTexture = '';
+		root.userData.colorTexture = '';
+		objectColorTexPicker.setValue( '#ffffff' );
 		// If no explicit videoUrl was provided, try to extract it from the hydra code
 		var resolvedVideoUrl = videoUrl || _extractVideoFromHydra( code );
 		if ( resolvedVideoUrl ) {
@@ -595,7 +649,7 @@ function SidebarObject( editor ) {
 			objectVideoTexLabel.setValue( '' );
 		}
 		objectImageTexPreviewImg.style.display = 'none';
-		editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: '', texture: code, videoTexture: resolvedVideoUrl || '' } );
+		editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: '', texture: code, videoTexture: resolvedVideoUrl || '', colorTexture: '' } );
 		( async function () {
 			try {
 				var hydraCanvas = document.createElement( 'canvas' );
@@ -1157,6 +1211,7 @@ function SidebarObject( editor ) {
 
 		// ── Refresh WV texture fields ─────────────────────────────────────────
 		objectHydraScript.setValue( object.userData.texture || '' );
+		objectColorTexPicker.setValue( object.userData.colorTexture || '#ffffff' );
 		const wvImageId = object.userData.imageTexture;
 		if ( wvImageId ) {
 			fetch( '/wp-json/wp/v2/media/' + wvImageId )

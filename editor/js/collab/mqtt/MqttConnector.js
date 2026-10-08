@@ -249,11 +249,11 @@ class MqttConnector {
             console.log(err);
           }
           // Apply texture fields from scene sync
-          if (model.imageTexture || model.texture) {
+          if (model.imageTexture || model.texture || model.colorTexture) {
             this.onMessageArrived({ destinationName: this.#mqttTopic, payloadString: JSON.stringify({
               user: arrMessageObj.user,
               message: 'setObjectTexture',
-              content: { uuid: model.uuid, imageTexture: model.imageTexture || '', texture: model.texture || '', videoTexture: model.videoTexture || '' }
+              content: { uuid: model.uuid, imageTexture: model.imageTexture || '', texture: model.texture || '', videoTexture: model.videoTexture || '', colorTexture: model.colorTexture || '' }
             }) });
           }
         });
@@ -394,6 +394,7 @@ class MqttConnector {
           if (arrMessageObj.content.imageTexture) {
             subjectObject.userData.imageTexture = arrMessageObj.content.imageTexture;
             subjectObject.userData.texture = '';
+            subjectObject.userData.colorTexture = '';
             fetch('/wp-json/wp/v2/media/' + arrMessageObj.content.imageTexture)
               .then(function(r) { return r.json(); })
               .then(function(mediaData) {
@@ -427,6 +428,7 @@ class MqttConnector {
           } else if (arrMessageObj.content.texture) {
             subjectObject.userData.texture = arrMessageObj.content.texture;
             subjectObject.userData.imageTexture = '';
+            subjectObject.userData.colorTexture = '';
             // Use explicit videoTexture; otherwise extract it from the hydra code
             var _rvm = !arrMessageObj.content.videoTexture && textureCode
               ? textureCode.match(/initVideo\(\s*["']([^"']+)["']\s*\)/)
@@ -470,11 +472,30 @@ class MqttConnector {
                 console.error('setObjectTexture (remote): Hydra setup failed', err);
               }
             })();
+          } else if (arrMessageObj.content.colorTexture) {
+            subjectObject.userData.colorTexture = arrMessageObj.content.colorTexture;
+            subjectObject.userData.imageTexture = '';
+            subjectObject.userData.texture = '';
+            subjectObject.userData.videoTexture = '';
+            const colorHex = arrMessageObj.content.colorTexture;
+            subjectObject.traverse(function(child) {
+              if (child.isMesh) {
+                const mats = Array.isArray(child.material) ? child.material : [child.material];
+                mats.forEach(function(mat) {
+                  const m = mat.clone();
+                  m.map = null;
+                  m.color.set(colorHex);
+                  m.needsUpdate = true;
+                  child.material = m;
+                });
+              }
+            });
           } else {
             // texture cleared — restore default material
             subjectObject.userData.imageTexture = '';
             subjectObject.userData.texture = '';
             subjectObject.userData.videoTexture = '';
+            subjectObject.userData.colorTexture = '';
             subjectObject.traverse(function(child) {
               if (child.isMesh) {
                 child.material = new THREE.MeshStandardMaterial();

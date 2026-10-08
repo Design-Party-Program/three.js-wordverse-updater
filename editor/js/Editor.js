@@ -258,12 +258,30 @@ Editor.prototype = {
       // Persist texture source fields so the Sidebar can read + re-apply them
       if (meta.imageTexture) object.userData.imageTexture = meta.imageTexture;
       if (meta.texture)      object.userData.texture      = meta.texture;
+      if (meta.colorTexture) object.userData.colorTexture = meta.colorTexture;
       // Use explicit videoTexture first; fall back to extracting it from the hydra code
       if (meta.videoTexture) {
         object.userData.videoTexture = meta.videoTexture;
       } else if (meta.texture) {
         var _vm = meta.texture.match(/initVideo\(\s*["']([^"']+)["']\s*\)/);
         if (_vm) object.userData.videoTexture = _vm[1];
+      }
+
+      // ── colorTexture: flat hex color → solid-color material (no map) ──
+      if (meta.colorTexture) {
+        const colorHex = meta.colorTexture;
+        object.traverse(function(child) {
+          if (child.isMesh) {
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            mats.forEach(function(mat) {
+              const m = mat.clone();
+              m.map = null;
+              m.color.set(colorHex);
+              m.needsUpdate = true;
+              child.material = m;
+            });
+          }
+        });
       }
 
       // ── imageTexture: WP media attachment ID → fetch URL → canvas texture ──

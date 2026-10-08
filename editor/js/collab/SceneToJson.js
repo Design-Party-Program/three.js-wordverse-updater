@@ -28,6 +28,7 @@
               imageTexture: model.userData.imageTexture || "",
               texture: model.userData.texture || "",
               videoTexture: model.userData.videoTexture || "",
+              colorTexture: model.userData.colorTexture || "",
             });
           }
 
@@ -47,6 +48,7 @@
               imageTexture: model.userData.imageTexture || "",
               texture: model.userData.texture || "",
               videoTexture: model.userData.videoTexture || "",
+              colorTexture: model.userData.colorTexture || "",
             } )
           }
 

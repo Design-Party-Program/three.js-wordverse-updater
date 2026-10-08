@@ -64,6 +64,7 @@ function MenubarSaveButtons( editor ) {
               imageTexture: _pickTexture( model, 'imageTexture' ),
               texture: _pickTexture( model, 'texture' ),
               videoTexture: _pickTexture( model, 'videoTexture' ),
+              colorTexture: _pickTexture( model, 'colorTexture' ),
             });
           }
 
@@ -83,6 +84,7 @@ function MenubarSaveButtons( editor ) {
               imageTexture: _pickTexture( model, 'imageTexture' ),
               texture: _pickTexture( model, 'texture' ),
               videoTexture: _pickTexture( model, 'videoTexture' ),
+              colorTexture: _pickTexture( model, 'colorTexture' ),
             } )
           }
 
@@ -118,6 +120,7 @@ function MenubarSaveButtons( editor ) {
               imageTexture: _pickTexture( model, 'imageTexture' ),
               texture: _pickTexture( model, 'texture' ),
               videoTexture: _pickTexture( model, 'videoTexture' ),
+              colorTexture: _pickTexture( model, 'colorTexture' ),
             });
           }
 
