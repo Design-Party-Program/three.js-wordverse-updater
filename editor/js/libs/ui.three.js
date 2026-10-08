@@ -4,6 +4,8 @@ import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 
 import { UISpan, UIDiv, UIRow, UIButton, UICheckbox, UIText, UINumber } from './ui.js';
 import { MoveObjectCommand } from '../commands/MoveObjectCommand.js';
+import { SetPositionCommand } from '../commands/SetPositionCommand.js';
+import { MultiCmdsCommand } from '../commands/MultiCmdsCommand.js';
 
 const cache = new Map();
 
@@ -465,7 +467,23 @@ class UIOutliner extends UIDiv {
 			if ( newParentIsChild ) return;
 
 			const editor = scope.editor;
-			editor.execute( new MoveObjectCommand( editor, object, newParent, nextObject ) );
+
+			// Recompute local position so the object's world position doesn't jump
+			// when its new parent has a different transform (e.g. a Ctrl+G group)
+			const worldPosition = new THREE.Vector3();
+			object.updateWorldMatrix( true, false );
+			object.getWorldPosition( worldPosition );
+
+			newParent.updateWorldMatrix( true, false );
+			const newLocalPosition = newParent.worldToLocal( worldPosition.clone() );
+
+			const oldPosition = object.position.clone();
+			object.position.copy( newLocalPosition );
+
+			editor.execute( new MultiCmdsCommand( editor, [
+				new MoveObjectCommand( editor, object, newParent, nextObject ),
+				new SetPositionCommand( editor, object, newLocalPosition, oldPosition ),
+			] ) );
 
 			const changeEvent = new Event( 'change', { bubbles: true, cancelable: true } );
 			scope.dom.dispatchEvent( changeEvent );
