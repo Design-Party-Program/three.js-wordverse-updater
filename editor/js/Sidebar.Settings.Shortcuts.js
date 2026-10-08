@@ -1,9 +1,11 @@
 import { UIPanel, UIText, UIRow, UIInput } from './libs/ui.js';
+import * as THREE from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 
 import { MultiCmdsCommand } from './commands/MultiCmdsCommand.js';
 import { RemoveObjectCommand } from './commands/RemoveObjectCommand.js';
 import { AddObjectCommand } from './commands/AddObjectCommand.js';
+import { MoveObjectCommand } from './commands/MoveObjectCommand.js';
 
 function SidebarSettingsShortcuts( editor ) {
 
@@ -151,6 +153,35 @@ function SidebarSettingsShortcuts( editor ) {
 				}
 
 				editor.selector.setSelection( commands.map( ( command ) => command.object ) );
+
+				return;
+
+			}
+
+			if ( key === 'g' ) {
+
+				event.preventDefault();
+
+				const selection = editor.selector.selection;
+				if ( selection.length < 2 ) return;
+
+				const group = new THREE.Group();
+				group.name = 'Group';
+
+				// the group is given an identity transform and added at the scene
+				// root (where multi-selected objects already live), so reparenting
+				// into it doesn't change any object's effective world transform
+				const commands = [ new AddObjectCommand( editor, group ) ];
+
+				for ( const object of selection ) {
+
+					commands.push( new MoveObjectCommand( editor, object, group ) );
+
+				}
+
+				editor.execute( new MultiCmdsCommand( editor, commands ) );
+
+				editor.selector.select( group );
 
 				return;
 
