@@ -12,6 +12,7 @@ import { MenubarSave} from './Menubar.Save.js';
 // import { MenubarStatus } from './Menubar.Status.js';
 import { MenubarViewButtons} from './Menubar.View.buttons.js';
 import { MenubarSaveButtons} from './Menubar.Save.buttons.js';
+import { MenubarUndoRedo } from './Menubar.UndoRedo.js';
 import { MenubarWordpressComponents } from './Menubar.WordpressComponents.js';
 import { MenubarSvg } from './Menubar.Svg.js';
 import { MenubarConnectionStatus } from './Menubar.ConnectionStatus.js';
@@ -24,6 +25,7 @@ function Menubar( editor, mqttConnection ) {
 	// container.add( new MenubarVrScenes( editor ) );
 	// container.add( new MenubarSave( editor ) );
 	container.add( new MenubarSaveButtons( editor ) );
+	container.add( new MenubarUndoRedo( editor ) );
 	container.add( new MenubarRender( editor ) );
 
   // add a button for save / upload with picture: images/controls/Font_Awesome_5_solid_cloud-upload-alt
