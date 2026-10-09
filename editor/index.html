@@ -167,7 +167,7 @@
       editor.clear();
       // console.log('Load vr scene '+vrScene.id);
 
-      const color = 0x222222;
+      const color = 0xffffff;
 
       const light = new THREE.AmbientLight( color );
       light.name = 'AmbientLight';
@@ -333,7 +333,7 @@
         vrSceneData.acf.lights && vrSceneData.acf.lights.map(lightProps => {
             console.log("lightProps", lightProps);
             if (lightProps.type === 'AmbientLight'){
-              const color = 0x222222;
+              const color = 0xffffff;
               light = new THREE.AmbientLight( color );
 
             }else if (lightProps.type === 'DirectionalLight'){

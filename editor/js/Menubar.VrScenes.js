@@ -50,7 +50,7 @@ function MenubarVrScenes( editor ) {
           editor.clear();
           // console.log('Load vr scene '+vrScene.id);
 
-          const color = 0x222222;
+          const color = 0xffffff;
 
           const light = new THREE.AmbientLight( color );
           light.name = 'AmbientLight';

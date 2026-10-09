@@ -870,7 +870,7 @@ class MqttConnector {
       }else if(arrMessageObj.message === 'addLight' && !this.#editor.objectByUuid(arrMessageObj.content.uuid)){
         if(arrMessageObj.content.type==="AmbientLight"){
 
-          const color = 0x222222;
+          const color = 0xffffff;
           const light = new THREE.AmbientLight( color );
           light.name = arrMessageObj.content.name;
           try {

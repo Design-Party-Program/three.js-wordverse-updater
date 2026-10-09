@@ -4,7 +4,7 @@ const addWpLightToScene = async (lightType, lightInstanceUUID, editor) => {
   
   if(lightType==="AmbientLight"){
 
-    const color = 0x222222;
+    const color = 0xffffff;
     const light = new THREE.AmbientLight( color );
     light.name = lightType;
     try {
