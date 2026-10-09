@@ -2,6 +2,7 @@ import { UIPanel, UIButton, UICheckbox, UIHorizontalRule  } from './libs/ui.js';
 import { ToolbarButton } from './ToolbarButton.js';
 import { ToolbarPrimitives } from './Toolbar.Primitives.js';
 import { ToolbarLights } from './Toolbar.Lights.js';
+import { ToolbarCameras } from './Toolbar.Cameras.js';
 import { AddObjectCommand } from './commands/AddObjectCommand.js';
 
 function Toolbar( editor ) {
@@ -18,6 +19,9 @@ function Toolbar( editor ) {
 
   // Lights ToolbarButton
   container.add(new ToolbarLights(editor));
+
+  // Cameras ToolbarButton
+  container.add(new ToolbarCameras(editor));
 
   // add a seperator rule
 	container.add( new UIHorizontalRule() );

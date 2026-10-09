@@ -9,6 +9,14 @@ import { SetRotationCommand } from './../../../js/commands/SetRotationCommand.js
 import { SetScaleCommand } from './../../../js/commands/SetScaleCommand.js';
 import { AddObjectAndSetMetaCommand } from './../../../js/commands/AddObjectAndSetMetaCommand.js';
 
+// ACF "no scene selected" is reported inconsistently (false/null/0/"0"), and
+// some of those (the string "0") are truthy in JS - normalize to a real post
+// ID or null before ever treating scene_texture as "set".
+function _validSceneId( value ) {
+  const id = Number( value );
+  return Number.isFinite( id ) && id > 0 ? id : null;
+}
+
 class MqttConnector {
 
 
@@ -304,11 +312,11 @@ class MqttConnector {
             console.log(err);
           }
           // Apply texture fields from scene sync
-          if (model.imageTexture || model.texture || model.colorTexture || model.sceneTexture) {
+          if (model.imageTexture || model.texture || model.colorTexture || _validSceneId(model.sceneTexture)) {
             this.onMessageArrived({ destinationName: this.#mqttTopic, payloadString: JSON.stringify({
               user: arrMessageObj.user,
               message: 'setObjectTexture',
-              content: { uuid: model.uuid, imageTexture: model.imageTexture || '', texture: model.texture || '', videoTexture: model.videoTexture || '', colorTexture: model.colorTexture || '', sceneTexture: model.sceneTexture || '' }
+              content: { uuid: model.uuid, imageTexture: model.imageTexture || '', texture: model.texture || '', videoTexture: model.videoTexture || '', colorTexture: model.colorTexture || '', sceneTexture: _validSceneId(model.sceneTexture) || '' }
             }) });
           }
           _reparentIntoGroup( modelInstance, model.group_uuid );
@@ -569,16 +577,17 @@ class MqttConnector {
                 });
               }
             });
-          } else if (arrMessageObj.content.sceneTexture) {
-            subjectObject.userData.sceneTexture = arrMessageObj.content.sceneTexture;
+          } else if (_validSceneId(arrMessageObj.content.sceneTexture)) {
+            const sceneId = _validSceneId(arrMessageObj.content.sceneTexture);
+            subjectObject.userData.sceneTexture = sceneId;
             subjectObject.userData.imageTexture = '';
             subjectObject.userData.texture = '';
             subjectObject.userData.colorTexture = '';
             subjectObject.userData.videoTexture = '';
-            fetch('/wp-json/wp/v2/vr-scenes/' + arrMessageObj.content.sceneTexture)
+            fetch('/wp-json/wp/v2/vr-scenes/' + sceneId)
               .then(function(r) { return r.json(); })
               .then(function(sceneData) {
-                const label = sceneData && sceneData.title ? sceneData.title.rendered : ('Scene #' + arrMessageObj.content.sceneTexture);
+                const label = sceneData && sceneData.title ? sceneData.title.rendered : ('Scene #' + sceneId);
                 subjectObject.userData.sceneTextureTitle = label;
                 const canvas = document.createElement('canvas');
                 canvas.width = 512;
@@ -944,6 +953,15 @@ class MqttConnector {
 
         }else{
           console.log(`No action taken for MQTT message "${arrMessageObj.message}"`, arrMessageObj);
+        }
+      }else if(arrMessageObj.message === 'addCamera' && !this.#editor.objectByUuid(arrMessageObj.content.uuid)){
+        const camera = new THREE.PerspectiveCamera( arrMessageObj.content.fov || 50, this.#editor.camera.aspect, arrMessageObj.content.near || 0.1, arrMessageObj.content.far || 1000 );
+        camera.name = arrMessageObj.content.name || 'Camera';
+        try {
+          this.#editor.execute( new AddObjectAndSetMetaCommand( this.#editor, camera, {uuid:arrMessageObj.content.uuid, name:camera.name} ) );
+        }
+        catch (err){
+          console.log(err);
         }
       }else if(arrMessageObj.message === 'addModel' && !this.#editor.objectByUuid(arrMessageObj.content.uuid)){
         // shared with the local "add model" flow so both sides load the model identically

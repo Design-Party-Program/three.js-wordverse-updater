@@ -13,6 +13,14 @@ _DEFAULT_CAMERA.position.set( 0, 5, 10 );
 _DEFAULT_CAMERA.lookAt( new THREE.Vector3() );
 const _ORTHOGRAPHIC_FRUSTUM_SIZE = 100;
 
+// ACF "no scene selected" is reported inconsistently (false/null/0/"0"), and
+// some of those (the string "0") are truthy in JS - normalize to a real post
+// ID or null before ever treating scene_texture as "set".
+function _validSceneId( value ) {
+	const id = Number( value );
+	return Number.isFinite( id ) && id > 0 ? id : null;
+}
+
 function Editor() {
 
 	const Signal = signals.Signal; // eslint-disable-line no-undef
@@ -286,7 +294,7 @@ Editor.prototype = {
       if (meta.imageTexture) object.userData.imageTexture = meta.imageTexture;
       if (meta.texture)      object.userData.texture      = meta.texture;
       if (meta.colorTexture) object.userData.colorTexture = meta.colorTexture;
-      if (meta.sceneTexture) object.userData.sceneTexture = meta.sceneTexture;
+      if (_validSceneId(meta.sceneTexture)) object.userData.sceneTexture = _validSceneId(meta.sceneTexture);
       // Use explicit videoTexture first; fall back to extracting it from the hydra code
       if (meta.videoTexture) {
         object.userData.videoTexture = meta.videoTexture;
@@ -314,11 +322,12 @@ Editor.prototype = {
 
       // ── sceneTexture: another vr-scenes post ID → text placeholder (the
       // real off-screen render only happens in the r3f player) ──
-      if (meta.sceneTexture) {
-        fetch('/wp-json/wp/v2/vr-scenes/' + meta.sceneTexture)
+      const _sceneTextureId = _validSceneId(meta.sceneTexture);
+      if (_sceneTextureId) {
+        fetch('/wp-json/wp/v2/vr-scenes/' + _sceneTextureId)
           .then(function(r) { return r.json(); })
           .then(function(sceneData) {
-            const label = sceneData && sceneData.title ? sceneData.title.rendered : ('Scene #' + meta.sceneTexture);
+            const label = sceneData && sceneData.title ? sceneData.title.rendered : ('Scene #' + _sceneTextureId);
             object.userData.sceneTextureTitle = label;
             const canvas = document.createElement('canvas');
             canvas.width = 512;

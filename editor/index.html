@@ -105,6 +105,14 @@
         editor.sendMqtt('userDisconnected', {content:"test"})
       });
 
+      // ACF "no scene selected" is reported inconsistently (false/null/0/"0"),
+      // and some of those (the string "0") are truthy in JS - normalize to a
+      // real post ID or null before ever treating scene_texture as "set".
+      const _validSceneId = ( value ) => {
+        const id = Number( value );
+        return Number.isFinite( id ) && id > 0 ? id : null;
+      };
+
       const parentUrlParams = new URLSearchParams(parent.window.location.search);
       const vrPostType = parentUrlParams.get('vr_post_type');
       const vrPostId = parentUrlParams.get('vr_post_id');
@@ -313,7 +321,7 @@
                 texture: primitiveProps.texture || null,
                 videoTexture: primitiveProps.videoTexture || null,
                 colorTexture: primitiveProps.color_texture || null,
-                sceneTexture: primitiveProps.scene_texture || null,
+                sceneTexture: _validSceneId( primitiveProps.scene_texture ),
                 group_uuid: primitiveProps.group_uuid || null,
             };
             mesh ? editor.execute( new AddObjectAndSetMetaCommand( editor, mesh, primProps)) : console.log('no mesh for '+primitiveProps.type);
@@ -406,7 +414,7 @@
                           texture:vrSceneModel.texture || null,
                           videoTexture:vrSceneModel.videoTexture || null,
                           colorTexture:vrSceneModel.color_texture || null,
-                          sceneTexture:vrSceneModel.scene_texture || null,
+                          sceneTexture:_validSceneId( vrSceneModel.scene_texture ),
                           group_uuid:vrSceneModel.group_uuid || null,
                           // name: vrSceneModelData.title.rendered
                       } ]
@@ -474,7 +482,7 @@
                   texture: vrSvg.texture || null,
                   videoTexture: vrSvg.videoTexture || null,
                   colorTexture: vrSvg.color_texture || null,
-                  sceneTexture: vrSvg.scene_texture || null,
+                  sceneTexture: _validSceneId( vrSvg.scene_texture ),
                   group_uuid: vrSvg.group_uuid || null,
                 },  
               ));
