@@ -110,7 +110,9 @@ class MqttConnector {
   sendMqttMessage = (messageStr, content) => {
     // console.log("is mqtt connected", this.#mqtt);
 
-    if(this.#mqtt){
+    // #mqtt starts as a truthy {} placeholder until MQTTconnect()'s async chain
+    // replaces it with the real Paho client - guard against sending before then
+    if(this.#mqtt && typeof this.#mqtt.send === 'function'){
       // console.log("Send "+messageStr);
       const messageObj = {
         user: {
