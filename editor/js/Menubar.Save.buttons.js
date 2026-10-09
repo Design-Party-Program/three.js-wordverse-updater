@@ -30,6 +30,7 @@ function MenubarSaveButtons( editor ) {
       const primitives = [];
       const lights = [];
       const groups = [];
+      const cameras = [];
 
       // Pull texture fields from the model root, or from any descendant where they were set.
       const _pickTexture = ( model, key ) => {
@@ -65,6 +66,25 @@ function MenubarSaveButtons( editor ) {
           return;
         }
 
+        if ( model.isCamera ) {
+          cameras.push( {
+            uuid: model.uuid,
+            name: model.name,
+            position: model.position,
+            rotation: {
+              x: model.rotation._x,
+              y: model.rotation._y,
+              z: model.rotation._z
+            },
+            fov: model.fov,
+            near: model.near,
+            far: model.far,
+            is_default: !! model.userData.wvIsDefaultCamera,
+            group_uuid: _groupUuidOf( model ),
+          } );
+          return;
+        }
+
         // compile a query and send it to the api
 
         if( model.userData.wpData ){
@@ -85,7 +105,8 @@ function MenubarSaveButtons( editor ) {
               imageTexture: _pickTexture( model, 'imageTexture' ),
               texture: _pickTexture( model, 'texture' ),
               videoTexture: _pickTexture( model, 'videoTexture' ),
-              colorTexture: _pickTexture( model, 'colorTexture' ),
+              color_texture: _pickTexture( model, 'colorTexture' ),
+              scene_texture: _pickTexture( model, 'sceneTexture' ),
               group_uuid: _groupUuidOf( model ),
             });
           }
@@ -106,7 +127,8 @@ function MenubarSaveButtons( editor ) {
               imageTexture: _pickTexture( model, 'imageTexture' ),
               texture: _pickTexture( model, 'texture' ),
               videoTexture: _pickTexture( model, 'videoTexture' ),
-              colorTexture: _pickTexture( model, 'colorTexture' ),
+              color_texture: _pickTexture( model, 'colorTexture' ),
+              scene_texture: _pickTexture( model, 'sceneTexture' ),
               group_uuid: _groupUuidOf( model ),
             } )
           }
@@ -144,7 +166,8 @@ function MenubarSaveButtons( editor ) {
               imageTexture: _pickTexture( model, 'imageTexture' ),
               texture: _pickTexture( model, 'texture' ),
               videoTexture: _pickTexture( model, 'videoTexture' ),
-              colorTexture: _pickTexture( model, 'colorTexture' ),
+              color_texture: _pickTexture( model, 'colorTexture' ),
+              scene_texture: _pickTexture( model, 'sceneTexture' ),
               group_uuid: _groupUuidOf( model ),
             });
           }
@@ -199,6 +222,7 @@ function MenubarSaveButtons( editor ) {
               primitives: primitives,
               lights: lights,
               groups: groups,
+              cameras: cameras,
               skycolor: `#${editor.scene.background.getHexString()}`
             }
           }),

@@ -198,14 +198,10 @@
             group.position.y = groupProps.position.y;
             group.position.z = groupProps.position.z;
           }
-          // NOTE: the "groups" ACF repeater's rotation subfield is misnamed
-          // "position_copy" (a leftover from cloning the position field when
-          // it was created) - rename it to "rotation" in ACF and update this
-          // key accordingly once fixed.
-          if (groupProps.position_copy) {
-            group.rotation.x = groupProps.position_copy.x;
-            group.rotation.y = groupProps.position_copy.y;
-            group.rotation.z = groupProps.position_copy.z;
+          if (groupProps.rotation) {
+            group.rotation.x = groupProps.rotation.x;
+            group.rotation.y = groupProps.rotation.y;
+            group.rotation.z = groupProps.rotation.z;
           }
           if (groupProps.scale) {
             group.scale.x = groupProps.scale.x;
@@ -214,6 +210,25 @@
           }
           editor.execute( new AddObjectCommand( editor, group ) );
           return group;
+        } );
+
+        vrSceneData.acf.cameras && vrSceneData.acf.cameras.map(cameraProps => {
+          const camera = new THREE.PerspectiveCamera( cameraProps.fov || 50, editor.camera.aspect, cameraProps.near || 0.1, cameraProps.far || 1000 );
+          camera.name = cameraProps.name || 'Camera';
+          editor.execute( new AddObjectAndSetMetaCommand( editor, camera,
+            {
+              uuid: cameraProps.uuid,
+              name: cameraProps.name,
+              position: cameraProps.position,
+              rotation: cameraProps.rotation,
+              fov: cameraProps.fov,
+              near: cameraProps.near,
+              far: cameraProps.far,
+              is_default: cameraProps.is_default,
+              group_uuid: cameraProps.group_uuid || null,
+            },
+          ) );
+          return camera;
         } );
 
         let mesh = false;
@@ -297,7 +312,8 @@
                 imageTexture: primitiveProps.imageTexture || null,
                 texture: primitiveProps.texture || null,
                 videoTexture: primitiveProps.videoTexture || null,
-                colorTexture: primitiveProps.colorTexture || null,
+                colorTexture: primitiveProps.color_texture || null,
+                sceneTexture: primitiveProps.scene_texture || null,
                 group_uuid: primitiveProps.group_uuid || null,
             };
             mesh ? editor.execute( new AddObjectAndSetMetaCommand( editor, mesh, primProps)) : console.log('no mesh for '+primitiveProps.type);
@@ -389,7 +405,8 @@
                           imageTexture:vrSceneModel.imageTexture || null,
                           texture:vrSceneModel.texture || null,
                           videoTexture:vrSceneModel.videoTexture || null,
-                          colorTexture:vrSceneModel.colorTexture || null,
+                          colorTexture:vrSceneModel.color_texture || null,
+                          sceneTexture:vrSceneModel.scene_texture || null,
                           group_uuid:vrSceneModel.group_uuid || null,
                           // name: vrSceneModelData.title.rendered
                       } ]
@@ -456,7 +473,8 @@
                   imageTexture: vrSvg.imageTexture || null,
                   texture: vrSvg.texture || null,
                   videoTexture: vrSvg.videoTexture || null,
-                  colorTexture: vrSvg.colorTexture || null,
+                  colorTexture: vrSvg.color_texture || null,
+                  sceneTexture: vrSvg.scene_texture || null,
                   group_uuid: vrSvg.group_uuid || null,
                 },  
               ));

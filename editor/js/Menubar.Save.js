@@ -21,6 +21,7 @@ function MenubarSave( editor ) {
       const primitives = [];
       const lights = [];
       const groups = [];
+      const cameras = [];
 
       // the uuid of the immediate parent Ctrl+G group, or "" if top-level
       const _groupUuidOf = ( model ) =>
@@ -44,6 +45,25 @@ function MenubarSave( editor ) {
           return;
         }
 
+        if ( model.isCamera ) {
+          cameras.push( {
+            uuid: model.uuid,
+            name: model.name,
+            position: model.position,
+            rotation: {
+              x: model.rotation._x,
+              y: model.rotation._y,
+              z: model.rotation._z
+            },
+            fov: model.fov,
+            near: model.near,
+            far: model.far,
+            is_default: !! model.userData.wvIsDefaultCamera,
+            group_uuid: _groupUuidOf( model ),
+          } );
+          return;
+        }
+
         // compile a query and send it to the api
 
         if( model.userData.wpData ){
@@ -64,7 +84,8 @@ function MenubarSave( editor ) {
               imageTexture: model.userData.imageTexture || "",
               texture: model.userData.texture || "",
               videoTexture: model.userData.videoTexture || "",
-              colorTexture: model.userData.colorTexture || "",
+              color_texture: model.userData.colorTexture || "",
+              scene_texture: model.userData.sceneTexture || "",
               group_uuid: _groupUuidOf( model ),
             });
           }
@@ -85,7 +106,8 @@ function MenubarSave( editor ) {
               imageTexture: model.userData.imageTexture || "",
               texture: model.userData.texture || "",
               videoTexture: model.userData.videoTexture || "",
-              colorTexture: model.userData.colorTexture || "",
+              color_texture: model.userData.colorTexture || "",
+              scene_texture: model.userData.sceneTexture || "",
               group_uuid: _groupUuidOf( model ),
             } )
           }
@@ -174,6 +196,7 @@ function MenubarSave( editor ) {
               primitives: primitives,
               lights: lights,
               groups: groups,
+              cameras: cameras,
               skycolor: `#${editor.scene.background.getHexString()}`
             }
           }),

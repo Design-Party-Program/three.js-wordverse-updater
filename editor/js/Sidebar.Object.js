@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-import { UIPanel, UIRow, UIInput, UIButton, UIColor, UICheckbox, UIInteger, UITextArea, UIText, UINumber } from './libs/ui.js';
+import { UIPanel, UIRow, UIInput, UIButton, UIColor, UICheckbox, UIInteger, UITextArea, UIText, UINumber, UISelect } from './libs/ui.js';
 import { UIBoolean } from './libs/ui.three.js';
 
 import { SetUuidCommand } from './commands/SetUuidCommand.js';
@@ -496,6 +496,51 @@ function SidebarObject( editor ) {
 	objectColorTexRow.add( objectColorTexClear );
 	container.add( objectColorTexRow );
 
+	// Scene-as-texture: render another vr-scenes post from its default camera as
+	// a live texture (r3f player only — the editor just shows a text placeholder)
+	const objectSceneTexSearchRow = new UIRow();
+	const objectSceneTexSearchInput = new UIInput( '' ).setWidth( '110px' );
+	const objectSceneTexSearchButton = new UIButton( 'Search' ).setMarginLeft( '4px' ).onClick( function () {
+		_searchScenes( objectSceneTexSearchInput.getValue() );
+	} );
+	objectSceneTexSearchRow.add( new UIText( 'Scene Tex' ).setWidth( '90px' ) );
+	objectSceneTexSearchRow.add( objectSceneTexSearchInput );
+	objectSceneTexSearchRow.add( objectSceneTexSearchButton );
+	container.add( objectSceneTexSearchRow );
+
+	const objectSceneTexResultsRow = new UIRow();
+	const objectSceneTexResultsSelect = new UISelect().setWidth( '110px' );
+	const objectSceneTexAssign = new UIButton( 'Assign' ).setMarginLeft( '4px' ).onClick( function () {
+		const id = objectSceneTexResultsSelect.getValue();
+		if ( ! id ) return;
+		const option = objectSceneTexResultsSelect.dom.options[ objectSceneTexResultsSelect.dom.selectedIndex ];
+		_applySceneTexture( editor.selected, parseInt( id, 10 ), option ? option.text : '' );
+	} );
+	const objectSceneTexClear = new UIButton( '✕' ).onClick( function () {
+		_applySceneTexture( editor.selected, null, null );
+	} );
+	objectSceneTexClear.dom.title = 'Remove scene texture';
+	objectSceneTexResultsRow.add( new UIText( '' ).setWidth( '90px' ) );
+	objectSceneTexResultsRow.add( objectSceneTexResultsSelect );
+	objectSceneTexResultsRow.add( objectSceneTexAssign );
+	objectSceneTexResultsRow.add( objectSceneTexClear );
+	container.add( objectSceneTexResultsRow );
+
+	const objectSceneTexLabelRow = new UIRow();
+	objectSceneTexLabelRow.dom.style.cssText = 'padding-left:94px;';
+	const objectSceneTexLabel = new UIText( '' ).setFontSize( '11px' ).setColor( '#aaa' );
+	objectSceneTexLabelRow.add( objectSceneTexLabel );
+	container.add( objectSceneTexLabelRow );
+
+	// Default camera toggle (only shown for camera objects)
+	const objectDefaultCameraRow = new UIRow();
+	const objectDefaultCameraCheckbox = new UICheckbox( false ).onChange( function () {
+		_setDefaultCamera( editor.selected, objectDefaultCameraCheckbox.getValue() );
+	} );
+	objectDefaultCameraRow.add( new UIText( 'Default Camera' ).setClass( 'Label' ) );
+	objectDefaultCameraRow.add( objectDefaultCameraCheckbox );
+	container.add( objectDefaultCameraRow );
+
 	const objectHydraScriptRow = new UIRow();
 	const objectHydraScript = new UITextArea().setWidth( '150px' ).setHeight( '72px' ).setFontSize( '11px' );
 	objectHydraScript.dom.style.fontFamily = 'monospace';
@@ -512,6 +557,93 @@ function SidebarObject( editor ) {
 	objectHydraApplyRow.add( new UIText( '' ).setWidth( '90px' ) );
 	objectHydraApplyRow.add( objectHydraApply );
 	container.add( objectHydraApplyRow );
+
+	// ── helper: mark a camera as the scene's default (only one at a time) ────
+	function _setDefaultCamera( object, isDefault ) {
+		if ( ! object || ! object.isCamera ) return;
+		if ( isDefault ) {
+			editor.scene.traverse( function ( node ) {
+				if ( node.isCamera && node !== object ) node.userData.wvIsDefaultCamera = false;
+			} );
+		}
+		object.userData.wvIsDefaultCamera = !! isDefault;
+		editor.sendMqtt( 'setDefaultCamera', { uuid: object.uuid, isDefault: !! isDefault } );
+		editor.signals.sceneGraphChanged.dispatch();
+	}
+
+	// ── helper: search vr-scenes posts by title for the scene-texture picker ──
+	function _searchScenes( query ) {
+		fetch( '/wp-json/wp/v2/vr-scenes?search=' + encodeURIComponent( query || '' ) + '&per_page=10' )
+			.then( function ( r ) { return r.json(); } )
+			.then( function ( results ) {
+				const options = {};
+				( results || [] ).forEach( function ( scene ) {
+					options[ scene.id ] = scene.title && scene.title.rendered ? scene.title.rendered : ( 'Scene #' + scene.id );
+				} );
+				objectSceneTexResultsSelect.setOptions( options );
+			} )
+			.catch( function ( e ) { console.warn( 'Scene search failed:', e ); } );
+	}
+
+	// ── helper: assign/clear another vr-scenes post as a live portal texture ──
+	// The editor only shows a text placeholder; the r3f player does the real
+	// off-screen render from that scene's default camera.
+	function _applySceneTexture( object, sceneId, sceneTitle ) {
+		if ( ! object ) return;
+		const root = _resolveTextureRoot( object );
+		if ( ! sceneId ) {
+			root.userData.sceneTexture = '';
+			root.userData.sceneTextureTitle = '';
+			objectSceneTexLabel.setValue( '' );
+			editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: '', texture: '', videoTexture: '', colorTexture: '', sceneTexture: '' } );
+			return;
+		}
+		root.userData.sceneTexture = sceneId;
+		root.userData.sceneTextureTitle = sceneTitle || ( 'Scene #' + sceneId );
+		root.userData.imageTexture = '';
+		root.userData.texture = '';
+		root.userData.videoTexture = '';
+		root.userData.colorTexture = '';
+		objectImageTexPreviewImg.style.display = 'none';
+		objectImageTexPreviewImg.src = '';
+		objectVideoTexLabel.setValue( '' );
+		objectHydraScript.setValue( '' );
+		objectColorTexPicker.setValue( '#ffffff' );
+		objectSceneTexLabel.setValue( root.userData.sceneTextureTitle );
+		editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: '', texture: '', videoTexture: '', colorTexture: '', sceneTexture: sceneId } );
+		_paintSceneTexturePlaceholder( object, root.userData.sceneTextureTitle );
+	}
+
+	// ── helper: render a simple "Portal: <name>" label onto a canvas texture ──
+	function _paintSceneTexturePlaceholder( object, label ) {
+		var canvas = document.createElement( 'canvas' );
+		canvas.width = 512;
+		canvas.height = 512;
+		var ctx = canvas.getContext( '2d' );
+		ctx.fillStyle = '#202030';
+		ctx.fillRect( 0, 0, canvas.width, canvas.height );
+		ctx.fillStyle = '#ffffff';
+		ctx.font = 'bold 36px sans-serif';
+		ctx.textAlign = 'center';
+		ctx.fillText( 'PORTAL', canvas.width / 2, canvas.height / 2 - 20 );
+		ctx.font = '24px sans-serif';
+		ctx.fillText( label || '', canvas.width / 2, canvas.height / 2 + 24 );
+		var tex = new THREE.CanvasTexture( canvas );
+		tex.needsUpdate = true;
+		object.traverse( function ( child ) {
+			if ( child.isMesh ) {
+				var mats = Array.isArray( child.material ) ? child.material : [ child.material ];
+				mats.forEach( function ( mat ) {
+					var m = mat.clone();
+					m.map = tex;
+					m.color.set( '#ffffff' );
+					m.needsUpdate = true;
+					child.material = m;
+				} );
+			}
+		} );
+		editor.signals.sceneGraphChanged.dispatch();
+	}
 
 	// ── helper: walk up to the wpData-bearing ancestor (the node persisted in save) ──
 	function _resolveTextureRoot( object ) {
@@ -539,12 +671,14 @@ function SidebarObject( editor ) {
 		root.userData.texture = '';
 		root.userData.videoTexture = '';
 		root.userData.colorTexture = '';
+		root.userData.sceneTexture = '';
 		objectHydraScript.setValue( '' );
 		objectVideoTexLabel.setValue( '' );
 		objectColorTexPicker.setValue( '#ffffff' );
+		objectSceneTexLabel.setValue( '' );
 		objectImageTexPreviewImg.src = imageUrl;
 		objectImageTexPreviewImg.style.display = 'block';
-		editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: mediaId, texture: '', videoTexture: '', colorTexture: '' } );
+		editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: mediaId, texture: '', videoTexture: '', colorTexture: '', sceneTexture: '' } );
 		var img = new Image();
 		img.crossOrigin = 'anonymous';
 		img.onload = function () {
@@ -597,19 +731,21 @@ function SidebarObject( editor ) {
 		const root = _resolveTextureRoot( object );
 		if ( ! hexColor ) {
 			root.userData.colorTexture = '';
-			editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: '', texture: '', videoTexture: '', colorTexture: '' } );
+			editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: '', texture: '', videoTexture: '', colorTexture: '', sceneTexture: '' } );
 			return;
 		}
 		root.userData.colorTexture = hexColor;
 		root.userData.imageTexture = '';
 		root.userData.texture = '';
 		root.userData.videoTexture = '';
+		root.userData.sceneTexture = '';
 		objectImageTexPreviewImg.style.display = 'none';
 		objectImageTexPreviewImg.src = '';
 		objectVideoTexLabel.setValue( '' );
 		objectHydraScript.setValue( '' );
 		objectColorTexPicker.setValue( hexColor );
-		editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: '', texture: '', videoTexture: '', colorTexture: hexColor } );
+		objectSceneTexLabel.setValue( '' );
+		editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: '', texture: '', videoTexture: '', colorTexture: hexColor, sceneTexture: '' } );
 		object.traverse( function ( child ) {
 			if ( child.isMesh ) {
 				var mats = Array.isArray( child.material ) ? child.material : [ child.material ];
@@ -638,7 +774,9 @@ function SidebarObject( editor ) {
 		root.userData.texture = code;
 		root.userData.imageTexture = '';
 		root.userData.colorTexture = '';
+		root.userData.sceneTexture = '';
 		objectColorTexPicker.setValue( '#ffffff' );
+		objectSceneTexLabel.setValue( '' );
 		// If no explicit videoUrl was provided, try to extract it from the hydra code
 		var resolvedVideoUrl = videoUrl || _extractVideoFromHydra( code );
 		if ( resolvedVideoUrl ) {
@@ -649,7 +787,7 @@ function SidebarObject( editor ) {
 			objectVideoTexLabel.setValue( '' );
 		}
 		objectImageTexPreviewImg.style.display = 'none';
-		editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: '', texture: code, videoTexture: resolvedVideoUrl || '', colorTexture: '' } );
+		editor.sendMqtt( 'setObjectTexture', { uuid: object.uuid, imageTexture: '', texture: code, videoTexture: resolvedVideoUrl || '', colorTexture: '', sceneTexture: '' } );
 		( async function () {
 			try {
 				var hydraCanvas = document.createElement( 'canvas' );
@@ -1001,6 +1139,8 @@ function SidebarObject( editor ) {
 
 		}
 
+		objectDefaultCameraRow.setDisplay( object.isCamera ? '' : 'none' );
+
 		//
 
 		if ( object.isLight ) {
@@ -1086,6 +1226,12 @@ function SidebarObject( editor ) {
 		objectScaleX.setValue( object.scale.x );
 		objectScaleY.setValue( object.scale.y );
 		objectScaleZ.setValue( object.scale.z );
+
+		if ( object.isCamera ) {
+
+			objectDefaultCameraCheckbox.setValue( !! object.userData.wvIsDefaultCamera );
+
+		}
 
 		if ( object.fov !== undefined ) {
 
@@ -1212,6 +1358,7 @@ function SidebarObject( editor ) {
 		// ── Refresh WV texture fields ─────────────────────────────────────────
 		objectHydraScript.setValue( object.userData.texture || '' );
 		objectColorTexPicker.setValue( object.userData.colorTexture || '#ffffff' );
+		objectSceneTexLabel.setValue( object.userData.sceneTexture ? ( object.userData.sceneTextureTitle || ( 'Scene #' + object.userData.sceneTexture ) ) : '' );
 		const wvImageId = object.userData.imageTexture;
 		if ( wvImageId ) {
 			fetch( '/wp-json/wp/v2/media/' + wvImageId )

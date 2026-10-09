@@ -211,13 +211,10 @@ class MqttConnector {
             group.position.y = groupProps.position.y;
             group.position.z = groupProps.position.z;
           }
-          // NOTE: the "groups" ACF repeater's rotation subfield is misnamed
-          // "position_copy" (leftover from cloning the position field) - rename
-          // it to "rotation" in ACF and update this key accordingly once fixed.
-          if ( groupProps.position_copy ) {
-            group.rotation.x = groupProps.position_copy.x;
-            group.rotation.y = groupProps.position_copy.y;
-            group.rotation.z = groupProps.position_copy.z;
+          if ( groupProps.rotation ) {
+            group.rotation.x = groupProps.rotation.x;
+            group.rotation.y = groupProps.rotation.y;
+            group.rotation.z = groupProps.rotation.z;
           }
           if ( groupProps.scale ) {
             group.scale.x = groupProps.scale.x;
@@ -225,6 +222,26 @@ class MqttConnector {
             group.scale.z = groupProps.scale.z;
           }
           this.#editor.scene.add( group );
+        } );
+
+        ( arrMessageObj.content.sceneData.cameras || [] ).forEach( cameraProps => {
+          if ( this.#editor.objectByUuid( cameraProps.uuid ) ) return;
+
+          const camera = new THREE.PerspectiveCamera( cameraProps.fov || 50, this.#editor.camera.aspect, cameraProps.near || 0.1, cameraProps.far || 1000 );
+          camera.name = cameraProps.name || 'Camera';
+          this.#editor.execute( new AddObjectAndSetMetaCommand( this.#editor, camera,
+            {
+              uuid: cameraProps.uuid,
+              name: cameraProps.name,
+              position: cameraProps.position,
+              rotation: cameraProps.rotation,
+              fov: cameraProps.fov,
+              near: cameraProps.near,
+              far: cameraProps.far,
+              is_default: cameraProps.is_default,
+              group_uuid: cameraProps.group_uuid || null,
+            },
+          ) );
         } );
 
         const _reparentIntoGroup = ( object, groupUuid ) => {
@@ -287,11 +304,11 @@ class MqttConnector {
             console.log(err);
           }
           // Apply texture fields from scene sync
-          if (model.imageTexture || model.texture || model.colorTexture) {
+          if (model.imageTexture || model.texture || model.colorTexture || model.sceneTexture) {
             this.onMessageArrived({ destinationName: this.#mqttTopic, payloadString: JSON.stringify({
               user: arrMessageObj.user,
               message: 'setObjectTexture',
-              content: { uuid: model.uuid, imageTexture: model.imageTexture || '', texture: model.texture || '', videoTexture: model.videoTexture || '', colorTexture: model.colorTexture || '' }
+              content: { uuid: model.uuid, imageTexture: model.imageTexture || '', texture: model.texture || '', videoTexture: model.videoTexture || '', colorTexture: model.colorTexture || '', sceneTexture: model.sceneTexture || '' }
             }) });
           }
           _reparentIntoGroup( modelInstance, model.group_uuid );
@@ -552,12 +569,52 @@ class MqttConnector {
                 });
               }
             });
+          } else if (arrMessageObj.content.sceneTexture) {
+            subjectObject.userData.sceneTexture = arrMessageObj.content.sceneTexture;
+            subjectObject.userData.imageTexture = '';
+            subjectObject.userData.texture = '';
+            subjectObject.userData.colorTexture = '';
+            subjectObject.userData.videoTexture = '';
+            fetch('/wp-json/wp/v2/vr-scenes/' + arrMessageObj.content.sceneTexture)
+              .then(function(r) { return r.json(); })
+              .then(function(sceneData) {
+                const label = sceneData && sceneData.title ? sceneData.title.rendered : ('Scene #' + arrMessageObj.content.sceneTexture);
+                subjectObject.userData.sceneTextureTitle = label;
+                const canvas = document.createElement('canvas');
+                canvas.width = 512;
+                canvas.height = 512;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#202030';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 36px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('PORTAL', canvas.width / 2, canvas.height / 2 - 20);
+                ctx.font = '24px sans-serif';
+                ctx.fillText(label, canvas.width / 2, canvas.height / 2 + 24);
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.needsUpdate = true;
+                subjectObject.traverse(function(child) {
+                  if (child.isMesh) {
+                    const mats = Array.isArray(child.material) ? child.material : [child.material];
+                    mats.forEach(function(mat) {
+                      const m = mat.clone();
+                      m.map = tex;
+                      m.color.set('#ffffff');
+                      m.needsUpdate = true;
+                      child.material = m;
+                    });
+                  }
+                });
+              })
+              .catch(function(err) { console.error('setObjectTexture (remote): scene fetch failed', err); });
           } else {
             // texture cleared — restore default material
             subjectObject.userData.imageTexture = '';
             subjectObject.userData.texture = '';
             subjectObject.userData.videoTexture = '';
             subjectObject.userData.colorTexture = '';
+            subjectObject.userData.sceneTexture = '';
             subjectObject.traverse(function(child) {
               if (child.isMesh) {
                 child.material = new THREE.MeshStandardMaterial();
@@ -594,6 +651,18 @@ class MqttConnector {
         }
         catch (err){
           console.log(err);
+        }
+      }else if(arrMessageObj.message === 'setDefaultCamera'){
+        const subjectCamera = this.#editor.objectByUuid(arrMessageObj.content.uuid);
+        if ( subjectCamera && subjectCamera.isCamera ) {
+          if ( arrMessageObj.content.isDefault ) {
+            this.#editor.scene.traverse( node => {
+              if ( node.isCamera && node !== subjectCamera ) node.userData.wvIsDefaultCamera = false;
+            } );
+          }
+          subjectCamera.userData.wvIsDefaultCamera = !! arrMessageObj.content.isDefault;
+          this.#editor.signals.sceneGraphChanged.dispatch();
+          this.#editor.signals.refreshSidebarObject3D.dispatch( subjectCamera );
         }
       }else if(arrMessageObj.message === 'addPrimitive' && !this.#editor.objectByUuid(arrMessageObj.content.uuid)){
         if(arrMessageObj.content.type==="Box"){

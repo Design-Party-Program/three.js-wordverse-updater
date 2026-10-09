@@ -6,6 +6,7 @@
       const primitives = [];
       const lights = [];
       const groups = [];
+      const cameras = [];
 
       // the uuid of the immediate parent Ctrl+G group, or "" if top-level
       const _groupUuidOf = ( model ) =>
@@ -26,6 +27,25 @@
             },
           } );
           model.children.forEach( walk );
+          return;
+        }
+
+        if ( model.isCamera ) {
+          cameras.push( {
+            uuid: model.uuid,
+            name: model.name,
+            position: model.position,
+            rotation: {
+              x: model.rotation._x,
+              y: model.rotation._y,
+              z: model.rotation._z
+            },
+            fov: model.fov,
+            near: model.near,
+            far: model.far,
+            is_default: !! model.userData.wvIsDefaultCamera,
+            group_uuid: _groupUuidOf( model ),
+          } );
           return;
         }
 
@@ -50,6 +70,7 @@
               texture: model.userData.texture || "",
               videoTexture: model.userData.videoTexture || "",
               colorTexture: model.userData.colorTexture || "",
+              sceneTexture: model.userData.sceneTexture || "",
               group_uuid: _groupUuidOf( model ),
             });
           }
@@ -71,6 +92,7 @@
               texture: model.userData.texture || "",
               videoTexture: model.userData.videoTexture || "",
               colorTexture: model.userData.colorTexture || "",
+              sceneTexture: model.userData.sceneTexture || "",
               group_uuid: _groupUuidOf( model ),
             } )
           }
@@ -133,7 +155,7 @@
       editor.scene.children.forEach( walk );
       console.log(vrModels, lights, primitives, wpElements, groups);
       return {
-        vrModels, lights, primitives, wpElements, groups
+        vrModels, lights, primitives, wpElements, groups, cameras
       }
     }
 

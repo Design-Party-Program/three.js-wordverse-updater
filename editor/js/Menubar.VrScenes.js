@@ -96,7 +96,7 @@ function MenubarVrScenes( editor ) {
                           imageTexture:vrSceneModel.imageTexture || null,
                           texture:vrSceneModel.texture || null,
                           videoTexture:vrSceneModel.videoTexture || null,
-                          colorTexture:vrSceneModel.colorTexture || null,
+                          colorTexture:vrSceneModel.color_texture || null,
                           // name: vrSceneModelData.title.rendered
                       } ]
                     );

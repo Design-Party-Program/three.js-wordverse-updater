@@ -253,6 +253,21 @@ Editor.prototype = {
         object.scale.z = meta.scale.z;
       }
 
+      // Camera-specific lens settings + default-camera flag (admin/three editor's
+      // Sidebar.Object.js "Default Camera" toggle; only one camera should be default)
+      if ( object.isCamera ) {
+        if ( meta.fov !== undefined && meta.fov !== null ) object.fov = meta.fov;
+        if ( meta.near !== undefined && meta.near !== null ) object.near = meta.near;
+        if ( meta.far !== undefined && meta.far !== null ) object.far = meta.far;
+        if ( typeof object.updateProjectionMatrix === 'function' ) object.updateProjectionMatrix();
+        if ( meta.is_default ) {
+          this.scene.traverse( function ( node ) {
+            if ( node.isCamera && node !== object ) node.userData.wvIsDefaultCamera = false;
+          } );
+        }
+        object.userData.wvIsDefaultCamera = !! meta.is_default;
+      }
+
       // Ctrl+G group membership: reparent into the matching group container,
       // which Menubar.VrScenes.js/MqttConnector.js must create before this
       // object loads. Falls back to staying top-level if the group isn't found.
@@ -271,6 +286,7 @@ Editor.prototype = {
       if (meta.imageTexture) object.userData.imageTexture = meta.imageTexture;
       if (meta.texture)      object.userData.texture      = meta.texture;
       if (meta.colorTexture) object.userData.colorTexture = meta.colorTexture;
+      if (meta.sceneTexture) object.userData.sceneTexture = meta.sceneTexture;
       // Use explicit videoTexture first; fall back to extracting it from the hydra code
       if (meta.videoTexture) {
         object.userData.videoTexture = meta.videoTexture;
@@ -294,6 +310,44 @@ Editor.prototype = {
             });
           }
         });
+      }
+
+      // ── sceneTexture: another vr-scenes post ID → text placeholder (the
+      // real off-screen render only happens in the r3f player) ──
+      if (meta.sceneTexture) {
+        fetch('/wp-json/wp/v2/vr-scenes/' + meta.sceneTexture)
+          .then(function(r) { return r.json(); })
+          .then(function(sceneData) {
+            const label = sceneData && sceneData.title ? sceneData.title.rendered : ('Scene #' + meta.sceneTexture);
+            object.userData.sceneTextureTitle = label;
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#202030';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 36px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('PORTAL', canvas.width / 2, canvas.height / 2 - 20);
+            ctx.font = '24px sans-serif';
+            ctx.fillText(label, canvas.width / 2, canvas.height / 2 + 24);
+            const portalTexture = new THREE.CanvasTexture(canvas);
+            portalTexture.needsUpdate = true;
+            object.traverse(function(child) {
+              if (child.isMesh) {
+                const mats = Array.isArray(child.material) ? child.material : [child.material];
+                mats.forEach(function(mat) {
+                  const m = mat.clone();
+                  m.map = portalTexture;
+                  m.color.set('#ffffff');
+                  m.needsUpdate = true;
+                  child.material = m;
+                });
+              }
+            });
+            this.signals.sceneGraphChanged.dispatch();
+          }.bind(this));
       }
 
       // ── imageTexture: WP media attachment ID → fetch URL → canvas texture ──
