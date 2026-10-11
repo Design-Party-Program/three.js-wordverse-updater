@@ -290,188 +290,7 @@ Editor.prototype = {
 
       object.userData = meta.wpData ? {...object.userData, wpData:meta.wpData} : object.userData;
 
-      // Persist texture source fields so the Sidebar can read + re-apply them
-      if (meta.imageTexture) object.userData.imageTexture = meta.imageTexture;
-      if (meta.texture)      object.userData.texture      = meta.texture;
-      if (meta.colorTexture) object.userData.colorTexture = meta.colorTexture;
-      if (_validSceneId(meta.sceneTexture)) object.userData.sceneTexture = _validSceneId(meta.sceneTexture);
-      // Use explicit videoTexture first; fall back to extracting it from the hydra code
-      if (meta.videoTexture) {
-        object.userData.videoTexture = meta.videoTexture;
-      } else if (meta.texture) {
-        var _vm = meta.texture.match(/initVideo\(\s*["']([^"']+)["']\s*\)/);
-        if (_vm) object.userData.videoTexture = _vm[1];
-      }
-
-      // ── colorTexture: flat hex color → solid-color material (no map) ──
-      if (meta.colorTexture) {
-        const colorHex = meta.colorTexture;
-        object.traverse(function(child) {
-          if (child.isMesh) {
-            const mats = Array.isArray(child.material) ? child.material : [child.material];
-            mats.forEach(function(mat) {
-              const m = mat.clone();
-              m.map = null;
-              m.color.set(colorHex);
-              m.needsUpdate = true;
-              child.material = m;
-            });
-          }
-        });
-      }
-
-      // ── sceneTexture: another vr-scenes post ID → text placeholder (the
-      // real off-screen render only happens in the r3f player) ──
-      const _sceneTextureId = _validSceneId(meta.sceneTexture);
-      if (_sceneTextureId) {
-        fetch('/wp-json/wp/v2/vr-scenes/' + _sceneTextureId)
-          .then(function(r) { return r.json(); })
-          .then(function(sceneData) {
-            const label = sceneData && sceneData.title ? sceneData.title.rendered : ('Scene #' + _sceneTextureId);
-            object.userData.sceneTextureTitle = label;
-            const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 512;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#202030';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 36px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('PORTAL', canvas.width / 2, canvas.height / 2 - 20);
-            ctx.font = '24px sans-serif';
-            ctx.fillText(label, canvas.width / 2, canvas.height / 2 + 24);
-            const portalTexture = new THREE.CanvasTexture(canvas);
-            portalTexture.needsUpdate = true;
-            object.traverse(function(child) {
-              if (child.isMesh) {
-                const mats = Array.isArray(child.material) ? child.material : [child.material];
-                mats.forEach(function(mat) {
-                  const m = mat.clone();
-                  m.map = portalTexture;
-                  m.color.set('#ffffff');
-                  m.needsUpdate = true;
-                  child.material = m;
-                });
-              }
-            });
-            this.signals.sceneGraphChanged.dispatch();
-          }.bind(this));
-      }
-
-      // ── imageTexture: WP media attachment ID → fetch URL → canvas texture ──
-      if (meta.imageTexture) {
-        fetch('/wp-json/wp/v2/media/' + meta.imageTexture)
-          .then(function(r) { return r.json(); })
-          .then(function(mediaData) {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = function() {
-              const canvas = document.createElement('canvas');
-              const ctx = canvas.getContext('2d');
-              canvas.width = img.width;
-              canvas.height = img.height;
-              // Flip vertically, matching the r3f player behaviour
-              ctx.scale(1, -1);
-              ctx.translate(0, -img.height);
-              ctx.drawImage(img, 0, 0);
-              const imgTexture = new THREE.CanvasTexture(canvas);
-              imgTexture.needsUpdate = true;
-              object.traverse(function(child) {
-                if (child.isMesh) {
-                  const mats = Array.isArray(child.material)
-                    ? child.material : [child.material];
-                  mats.forEach(function(mat) {
-                    const m = mat.clone();
-                    m.map = imgTexture;
-                    m.needsUpdate = true;
-                    child.material = m;
-                  });
-                }
-              });
-              scope.signals.sceneGraphChanged.dispatch();
-            };
-            img.onerror = function() {
-              console.error('imageTexture: failed to load image from', mediaData.source_url);
-            };
-            if ( ! mediaData || ! mediaData.source_url ) {
-              console.warn('imageTexture: media lookup returned no source_url', meta.imageTexture, mediaData);
-              return;
-            }
-            img.src = mediaData.source_url;
-          })
-          .catch(function(err) {
-            console.error('imageTexture: WP media fetch failed', err);
-          });
-      }
-
-      // ── texture: Hydra JS string → offscreen canvas → animated CanvasTexture ──
-      if (meta.texture) {
-        (async function(textureCode) {
-          try {
-            const hydraCanvas = document.createElement('canvas');
-            hydraCanvas.width = 1024;
-            hydraCanvas.height = 1024;
-            hydraCanvas.style.cssText = 'position:absolute;right:-2048px;bottom:0;z-index:-1;pointer-events:none;';
-            document.body.appendChild(hydraCanvas);
-
-            // Load hydra-synth UMD once; subsequent calls reuse the same promise
-            if (!window.Hydra) {
-              if (!window._hydraSynthLoading) {
-                window._hydraSynthLoading = new Promise(function(resolve, reject) {
-                  const script = document.createElement('script');
-                  script.src = 'https://unpkg.com/hydra-synth/dist/hydra-synth.js';
-                  script.onload = resolve;
-                  script.onerror = reject;
-                  document.head.appendChild(script);
-                });
-              }
-              await window._hydraSynthLoading;
-            }
-
-            const hydraInstance = new window.Hydra({
-              detectAudio: false,
-              makeGlobal: false,
-              canvas: hydraCanvas,
-            });
-
-            // Give hydra time to initialise before evaluating code
-            await new Promise(function(resolve) { setTimeout(resolve, 150); });
-
-            // Evaluate the whole script as one program (not line-by-line) so
-            // multi-line chains like `osc(...)\n.color(...)\n.out()` parse
-            // correctly, binding every hydraInstance.synth method (osc, shape,
-            // noise, ...) as a local so nested generator arguments (e.g.
-            // mask(shape(...))) resolve too, not just the outermost call
-            const synthKeys = Object.keys(hydraInstance.synth);
-            const synthValues = synthKeys.map(function(k) { return hydraInstance.synth[k]; });
-            try {
-              new Function(synthKeys.join(','), textureCode).apply(null, synthValues); // eslint-disable-line no-new-func
-            } catch(e) {
-              console.warn('Hydra eval error:', textureCode, e);
-            }
-
-            const canvasTexture = new THREE.CanvasTexture(hydraCanvas);
-            canvasTexture.needsUpdate = true;
-            object.traverse(function(child) {
-              if (child.isMesh) {
-                child.material = new THREE.MeshPhongMaterial({ map: canvasTexture });
-                child.material.needsUpdate = true;
-              }
-            });
-
-            // Mark texture dirty every frame so hydra animation plays
-            (function frameLoop() {
-              canvasTexture.needsUpdate = true;
-              requestAnimationFrame(frameLoop);
-            })();
-
-            scope.signals.sceneGraphChanged.dispatch();
-          } catch(err) {
-            console.error('Hydra texture setup failed:', err);
-          }
-        })(meta.texture);
-      }
+      this.applyWvTexture( object, meta );
 
 		} else {
 
@@ -482,6 +301,199 @@ Editor.prototype = {
 
 		this.signals.objectAdded.dispatch( object );
 		this.signals.sceneGraphChanged.dispatch();
+
+	},
+
+	// Applies WordVerse's texture fields (image/video/hydra/color/scene) to every mesh
+	// descendant of `object` and persists the source fields to userData - used both when
+	// an object is first added (meta passed inline) and to (re)paint an object later, e.g.
+	// a Ctrl+G group whose members only exist after the rest of the scene has loaded.
+	applyWvTexture: function ( object, meta ) {
+
+		var scope = this;
+
+		// Persist texture source fields so the Sidebar can read + re-apply them
+		if (meta.imageTexture) object.userData.imageTexture = meta.imageTexture;
+		if (meta.texture)      object.userData.texture      = meta.texture;
+		if (meta.colorTexture) object.userData.colorTexture = meta.colorTexture;
+		if (_validSceneId(meta.sceneTexture)) object.userData.sceneTexture = _validSceneId(meta.sceneTexture);
+		// Use explicit videoTexture first; fall back to extracting it from the hydra code
+		if (meta.videoTexture) {
+			object.userData.videoTexture = meta.videoTexture;
+		} else if (meta.texture) {
+			var _vm = meta.texture.match(/initVideo\(\s*["']([^"']+)["']\s*\)/);
+			if (_vm) object.userData.videoTexture = _vm[1];
+		}
+
+		// ── colorTexture: flat hex color → solid-color material (no map) ──
+		if (meta.colorTexture) {
+			const colorHex = meta.colorTexture;
+			object.traverse(function(child) {
+				if (child.isMesh) {
+					const mats = Array.isArray(child.material) ? child.material : [child.material];
+					mats.forEach(function(mat) {
+						const m = mat.clone();
+						m.map = null;
+						m.color.set(colorHex);
+						m.needsUpdate = true;
+						child.material = m;
+					});
+				}
+			});
+		}
+
+		// ── sceneTexture: another vr-scenes post ID → text placeholder (the
+		// real off-screen render only happens in the r3f player) ──
+		const _sceneTextureId = _validSceneId(meta.sceneTexture);
+		if (_sceneTextureId) {
+			fetch('/wp-json/wp/v2/vr-scenes/' + _sceneTextureId)
+				.then(function(r) { return r.json(); })
+				.then(function(sceneData) {
+					const label = sceneData && sceneData.title ? sceneData.title.rendered : ('Scene #' + _sceneTextureId);
+					object.userData.sceneTextureTitle = label;
+					const canvas = document.createElement('canvas');
+					canvas.width = 512;
+					canvas.height = 512;
+					const ctx = canvas.getContext('2d');
+					ctx.fillStyle = '#202030';
+					ctx.fillRect(0, 0, canvas.width, canvas.height);
+					ctx.fillStyle = '#ffffff';
+					ctx.font = 'bold 36px sans-serif';
+					ctx.textAlign = 'center';
+					ctx.fillText('PORTAL', canvas.width / 2, canvas.height / 2 - 20);
+					ctx.font = '24px sans-serif';
+					ctx.fillText(label, canvas.width / 2, canvas.height / 2 + 24);
+					const portalTexture = new THREE.CanvasTexture(canvas);
+					portalTexture.needsUpdate = true;
+					object.traverse(function(child) {
+						if (child.isMesh) {
+							const mats = Array.isArray(child.material) ? child.material : [child.material];
+							mats.forEach(function(mat) {
+								const m = mat.clone();
+								m.map = portalTexture;
+								m.color.set('#ffffff');
+								m.needsUpdate = true;
+								child.material = m;
+							});
+						}
+					});
+					scope.signals.sceneGraphChanged.dispatch();
+				});
+		}
+
+		// ── imageTexture: WP media attachment ID → fetch URL → canvas texture ──
+		if (meta.imageTexture) {
+			fetch('/wp-json/wp/v2/media/' + meta.imageTexture)
+				.then(function(r) { return r.json(); })
+				.then(function(mediaData) {
+					const img = new Image();
+					img.crossOrigin = 'anonymous';
+					img.onload = function() {
+						const canvas = document.createElement('canvas');
+						const ctx = canvas.getContext('2d');
+						canvas.width = img.width;
+						canvas.height = img.height;
+						// Flip vertically, matching the r3f player behaviour
+						ctx.scale(1, -1);
+						ctx.translate(0, -img.height);
+						ctx.drawImage(img, 0, 0);
+						const imgTexture = new THREE.CanvasTexture(canvas);
+						imgTexture.needsUpdate = true;
+						object.traverse(function(child) {
+							if (child.isMesh) {
+								const mats = Array.isArray(child.material)
+									? child.material : [child.material];
+								mats.forEach(function(mat) {
+									const m = mat.clone();
+									m.map = imgTexture;
+									m.needsUpdate = true;
+									child.material = m;
+								});
+							}
+						});
+						scope.signals.sceneGraphChanged.dispatch();
+					};
+					img.onerror = function() {
+						console.error('imageTexture: failed to load image from', mediaData.source_url);
+					};
+					if ( ! mediaData || ! mediaData.source_url ) {
+						console.warn('imageTexture: media lookup returned no source_url', meta.imageTexture, mediaData);
+						return;
+					}
+					img.src = mediaData.source_url;
+				})
+				.catch(function(err) {
+					console.error('imageTexture: WP media fetch failed', err);
+				});
+		}
+
+		// ── texture: Hydra JS string → offscreen canvas → animated CanvasTexture ──
+		if (meta.texture) {
+			(async function(textureCode) {
+				try {
+					const hydraCanvas = document.createElement('canvas');
+					hydraCanvas.width = 1024;
+					hydraCanvas.height = 1024;
+					hydraCanvas.style.cssText = 'position:absolute;right:-2048px;bottom:0;z-index:-1;pointer-events:none;';
+					document.body.appendChild(hydraCanvas);
+
+					// Load hydra-synth UMD once; subsequent calls reuse the same promise
+					if (!window.Hydra) {
+						if (!window._hydraSynthLoading) {
+							window._hydraSynthLoading = new Promise(function(resolve, reject) {
+								const script = document.createElement('script');
+								script.src = 'https://unpkg.com/hydra-synth/dist/hydra-synth.js';
+								script.onload = resolve;
+								script.onerror = reject;
+								document.head.appendChild(script);
+							});
+						}
+						await window._hydraSynthLoading;
+					}
+
+					const hydraInstance = new window.Hydra({
+						detectAudio: false,
+						makeGlobal: false,
+						canvas: hydraCanvas,
+					});
+
+					// Give hydra time to initialise before evaluating code
+					await new Promise(function(resolve) { setTimeout(resolve, 150); });
+
+					// Evaluate the whole script as one program (not line-by-line) so
+					// multi-line chains like `osc(...)\n.color(...)\n.out()` parse
+					// correctly, binding every hydraInstance.synth method (osc, shape,
+					// noise, ...) as a local so nested generator arguments (e.g.
+					// mask(shape(...))) resolve too, not just the outermost call
+					const synthKeys = Object.keys(hydraInstance.synth);
+					const synthValues = synthKeys.map(function(k) { return hydraInstance.synth[k]; });
+					try {
+						new Function(synthKeys.join(','), textureCode).apply(null, synthValues); // eslint-disable-line no-new-func
+					} catch(e) {
+						console.warn('Hydra eval error:', textureCode, e);
+					}
+
+					const canvasTexture = new THREE.CanvasTexture(hydraCanvas);
+					canvasTexture.needsUpdate = true;
+					object.traverse(function(child) {
+						if (child.isMesh) {
+							child.material = new THREE.MeshPhongMaterial({ map: canvasTexture });
+							child.material.needsUpdate = true;
+						}
+					});
+
+					// Mark texture dirty every frame so hydra animation plays
+					(function frameLoop() {
+						canvasTexture.needsUpdate = true;
+						requestAnimationFrame(frameLoop);
+					})();
+
+					scope.signals.sceneGraphChanged.dispatch();
+				} catch(err) {
+					console.error('Hydra texture setup failed:', err);
+				}
+			})(meta.texture);
+		}
 
 	},
 

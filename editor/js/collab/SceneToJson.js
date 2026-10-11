@@ -25,6 +25,12 @@
               y: model.rotation._y,
               z: model.rotation._z
             },
+            // A group's own texture overrides every member's texture (r3f player)
+            imageTexture: model.userData.imageTexture || "",
+            texture: model.userData.texture || "",
+            videoTexture: model.userData.videoTexture || "",
+            colorTexture: model.userData.colorTexture || "",
+            sceneTexture: model.userData.sceneTexture || "",
           } );
           model.children.forEach( walk );
           return;

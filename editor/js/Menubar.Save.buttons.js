@@ -44,6 +44,10 @@ function MenubarSaveButtons( editor ) {
         return found;
       };
 
+      // A group's texture is only ever stored on the group itself (never inferred from
+      // members), unlike _pickTexture's descendant fallback used for models/primitives/svg
+      const _ownTexture = ( model, key ) => ( model.userData && model.userData[ key ] ) || "";
+
       // the uuid of the immediate parent Ctrl+G group, or "" if top-level
       const _groupUuidOf = ( model ) =>
         ( model.parent && model.parent.userData && model.parent.userData.wvIsGroupContainer ) ? model.parent.uuid : "";
@@ -61,6 +65,12 @@ function MenubarSaveButtons( editor ) {
               y: model.rotation._y,
               z: model.rotation._z
             },
+            // A group's own texture overrides every member's texture (r3f player)
+            imageTexture: _ownTexture( model, 'imageTexture' ),
+            texture: _ownTexture( model, 'texture' ),
+            videoTexture: _ownTexture( model, 'videoTexture' ),
+            color_texture: _ownTexture( model, 'colorTexture' ),
+            scene_texture: _ownTexture( model, 'sceneTexture' ),
           } );
           model.children.forEach( walk );
           return;

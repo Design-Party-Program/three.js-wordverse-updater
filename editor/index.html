@@ -491,6 +491,25 @@
           });
         });
 
+        // A group's own texture (if set) overrides every member's texture (r3f player);
+        // repaint it here, once members have had a chance to load + reparent into it
+        delay( 1500 ).then( () => {
+          vrSceneData.acf.groups && vrSceneData.acf.groups.forEach( groupProps => {
+            const hasGroupTexture = groupProps.imageTexture || groupProps.texture ||
+              groupProps.videoTexture || groupProps.color_texture || _validSceneId( groupProps.scene_texture );
+            if ( ! hasGroupTexture ) return;
+            const groupObj = editor.objectByUuid( groupProps.uuid );
+            if ( ! groupObj ) return;
+            editor.applyWvTexture( groupObj, {
+              imageTexture: groupProps.imageTexture || null,
+              texture: groupProps.texture || null,
+              videoTexture: groupProps.videoTexture || null,
+              colorTexture: groupProps.color_texture || null,
+              sceneTexture: _validSceneId( groupProps.scene_texture ),
+            } );
+          } );
+        } );
+
         // fetch wp content components
         console.log("wp_elements?");
         fetch(`/wp-json/wp/v2/${vrSceneData.acf.vr_post_type}/?per_page=100&status=publish`)

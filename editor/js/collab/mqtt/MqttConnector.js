@@ -429,6 +429,25 @@ class MqttConnector {
           }
         });
 
+        // A group's own texture (if set) overrides every member's texture (r3f player);
+        // repaint it here, once members have had a chance to reparent into it above
+        setTimeout( () => {
+          ( arrMessageObj.content.sceneData.groups || [] ).forEach( groupProps => {
+            const hasGroupTexture = groupProps.imageTexture || groupProps.texture ||
+              groupProps.videoTexture || groupProps.colorTexture || _validSceneId( groupProps.sceneTexture );
+            if ( ! hasGroupTexture ) return;
+            const groupObj = this.#editor.objectByUuid( groupProps.uuid );
+            if ( ! groupObj ) return;
+            this.#editor.applyWvTexture( groupObj, {
+              imageTexture: groupProps.imageTexture || null,
+              texture: groupProps.texture || null,
+              videoTexture: groupProps.videoTexture || null,
+              colorTexture: groupProps.colorTexture || null,
+              sceneTexture: _validSceneId( groupProps.sceneTexture ),
+            } );
+          } );
+        }, 1500 );
+
           
         // add user avatar
         var avatarInstance = this.#editor.objectByUuid(arrMessageObj.user.instance);
