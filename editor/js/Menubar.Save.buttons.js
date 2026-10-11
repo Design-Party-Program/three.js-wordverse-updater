@@ -236,7 +236,7 @@ function MenubarSaveButtons( editor ) {
               skycolor: `#${editor.scene.background.getHexString()}`,
               // Scene Timeline (Animation.js "Scene Timeline" section); cutscene_duration
               // stays the single source of truth for the timeline's total duration
-              timeline: JSON.stringify( editor.scene.userData.timeline || { duration: 10, nodes: [] } ),
+              timeline: JSON.stringify( editor.scene.userData.timeline || { duration: 10, nodes: [], bases: {} } ),
               cutscene_duration: ( editor.scene.userData.timeline && editor.scene.userData.timeline.duration ) || 10,
             }
           }),

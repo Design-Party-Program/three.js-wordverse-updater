@@ -210,7 +210,7 @@ class MqttConnector {
 
         // Scene Timeline (Animation.js "Scene Timeline" section) - sent as a plain
         // object here (not JSON text, unlike the WP REST save path)
-        this.#editor.scene.userData.timeline = arrMessageObj.content.sceneData.timeline || { duration: 10, nodes: [] };
+        this.#editor.scene.userData.timeline = arrMessageObj.content.sceneData.timeline || { duration: 10, nodes: [], bases: {} };
         this.#editor.signals.sceneTimelineChanged.dispatch();
 
         // Ctrl+G group containers must exist before any member below reparents into them

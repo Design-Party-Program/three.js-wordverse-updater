@@ -199,7 +199,7 @@
         // Scene Timeline (Animation.js "Scene Timeline" section) - falls back to the
         // existing cutscene_duration field (or 10s) when no timeline has been authored yet
         editor.scene.userData.timeline = parseTimeline( vrSceneData.acf.timeline ) ||
-          { duration: Number( vrSceneData.acf.cutscene_duration ) || 10, nodes: [] };
+          { duration: Number( vrSceneData.acf.cutscene_duration ) || 10, nodes: [], bases: {} };
         editor.signals.sceneTimelineChanged.dispatch();
 
         // Ctrl+G group containers must exist before any member below reparents into them

@@ -4,6 +4,10 @@ import {
 	createNode,
 	groupTracksByTarget,
 	evaluateTrack,
+	evaluateRelativeTrack,
+	getRelativeOp,
+	combineWithBase,
+	invertFromBase,
 	readPropertyValue,
 	applyPropertyValue,
 	getAnimatablePropertiesForObject,
@@ -206,11 +210,69 @@ function Animation( editor ) {
 
 		if ( ! editor.scene.userData.timeline ) {
 
-			editor.scene.userData.timeline = { duration: 10, nodes: [] };
+			editor.scene.userData.timeline = { duration: 10, nodes: [], bases: {} };
 
 		}
 
+		if ( ! editor.scene.userData.timeline.bases ) editor.scene.userData.timeline.bases = {};
+
 		return editor.scene.userData.timeline;
+
+	}
+
+	// For relative-capable properties, re-bakes every node's absolute `value` from the
+	// track's current base + stored delta - keeps legacy/unaware consumers (players that
+	// only ever read `value`) in sync whenever the master moves.
+	function rebakeTrackValues( uuid, property ) {
+
+		const timeline = getTimelineData();
+		const key = uuid + '::' + property;
+		const base = timeline.bases[ key ];
+		if ( ! base ) return;
+
+		const normalize = property.indexOf( 'rotation' ) === 0;
+		timeline.nodes.forEach( ( n ) => {
+
+			if ( n.target_uuid === uuid && n.property === property && n.delta !== undefined ) {
+
+				n.value = combineWithBase( base.value, n.delta, base.op, normalize );
+
+			}
+
+		} );
+
+	}
+
+	// One-time migration: scenes saved before relative authoring existed have absolute
+	// `value`s but no base snapshot. Capture each track's object's current (freshly
+	// loaded, un-previewed) value as the master and back-derive every keyframe's delta,
+	// so existing scenes keep playing back identically after upgrading.
+	function migrateLegacyTimelineBases() {
+
+		const timeline = getTimelineData();
+		const tracks = groupTracksByTarget( timeline.nodes );
+
+		tracks.forEach( ( nodes, key ) => {
+
+			const property = nodes[ 0 ].property;
+			const op = getRelativeOp( property );
+			if ( ! op || timeline.bases[ key ] ) return;
+
+			const uuid = nodes[ 0 ].target_uuid;
+			const object = editor.objectByUuid( uuid );
+			if ( ! object ) return;
+
+			const baseValue = readPropertyValue( object, property );
+			if ( baseValue === undefined ) return;
+
+			timeline.bases[ key ] = { value: baseValue, op };
+			nodes.forEach( ( node ) => {
+
+				if ( node.delta === undefined ) node.delta = invertFromBase( baseValue, node.value, op );
+
+			} );
+
+		} );
 
 	}
 
@@ -245,12 +307,27 @@ function Animation( editor ) {
 		if ( value === undefined ) return;
 
 		const timeline = getTimelineData();
+		const key = object.uuid + '::' + property;
+		const op = getRelativeOp( property );
+		let delta;
+
+		if ( op ) {
+
+			// First keyframe on this track: whatever the object currently is becomes the
+			// "master" value every keyframe on this track is relative to from now on.
+			if ( ! timeline.bases[ key ] ) timeline.bases[ key ] = { value, op };
+
+			delta = invertFromBase( timeline.bases[ key ].value, value, op );
+
+		}
+
 		const node = createNode( {
 			targetUuid: object.uuid,
 			property,
 			time: sceneTimelineTime,
 			mode: sceneModeSelect.getValue(),
 			value,
+			delta,
 			easing: sceneEasingSelect.getValue(),
 		} );
 
@@ -345,6 +422,12 @@ function Animation( editor ) {
 
 		}
 
+		// Editing the absolute value directly re-derives the delta against the track's
+		// current master, so the keyframe keeps moving with the master afterwards.
+		const timeline = getTimelineData();
+		const base = timeline.bases[ node.target_uuid + '::' + node.property ];
+		if ( base ) node.delta = invertFromBase( base.value, node.value, base.op );
+
 		signals.sceneTimelineChanged.dispatch();
 
 	}
@@ -372,7 +455,11 @@ function Animation( editor ) {
 			const separatorIndex = key.indexOf( '::' );
 			const uuid = key.substring( 0, separatorIndex );
 			const property = key.substring( separatorIndex + 2 );
-			const value = evaluateTrack( nodes, t );
+
+			const base = timeline.bases[ key ];
+			const value = base
+				? evaluateRelativeTrack( nodes, t, base.value, base.op, property.indexOf( 'rotation' ) === 0 )
+				: evaluateTrack( nodes, t );
 			if ( value === undefined ) return;
 
 			const object = editor.objectByUuid( uuid );
@@ -527,6 +614,8 @@ function Animation( editor ) {
 
 	function renderSceneTimelineTracks() {
 
+		migrateLegacyTimelineBases();
+
 		sceneTimelineTrackList.innerHTML = '';
 
 		const timeline = getTimelineData();
@@ -660,11 +749,11 @@ function Animation( editor ) {
 	function loadSceneTimeline() {
 
 		// Normalize whatever is currently on userData (freshly loaded from ACF JSON,
-		// or absent for a brand-new scene) into the {duration, nodes} shape.
+		// or absent for a brand-new scene) into the {duration, nodes, bases} shape.
 		const existing = editor.scene.userData.timeline;
 		editor.scene.userData.timeline = ( existing && Array.isArray( existing.nodes ) )
 			? existing
-			: { duration: 10, nodes: [] };
+			: { duration: 10, nodes: [], bases: {} };
 
 		isScenePlaying = false;
 		sceneTimelineTime = 0;
@@ -680,6 +769,38 @@ function Animation( editor ) {
 	signals.sceneTimelineChanged.add( updateSceneTimeDisplay );
 	signals.objectSelected.add( refreshScenePropertyOptions );
 	signals.editorCleared.add( loadSceneTimeline );
+
+	// Keyframes track the object's master value, not a frozen absolute number: whenever
+	// the object is moved/recolored/etc. through the normal editor UI (Sidebar, transform
+	// gizmo), shift the relevant tracks' bases to match, carrying every keyframe along
+	// with it. Ignored while scrubbing/playing, since the live values shown then are
+	// evaluated preview output, not the master.
+	signals.objectChanged.add( function ( object ) {
+
+		if ( ! object || isScrubbingSceneTimeline || isScenePlaying ) return;
+
+		const timeline = getTimelineData();
+		let changed = false;
+
+		Object.keys( timeline.bases ).forEach( ( key ) => {
+
+			const separatorIndex = key.indexOf( '::' );
+			const uuid = key.substring( 0, separatorIndex );
+			if ( uuid !== object.uuid ) return;
+
+			const property = key.substring( separatorIndex + 2 );
+			const newBaseValue = readPropertyValue( object, property );
+			if ( newBaseValue === undefined ) return;
+
+			timeline.bases[ key ].value = newBaseValue;
+			rebakeTrackValues( uuid, property );
+			changed = true;
+
+		} );
+
+		if ( changed ) signals.sceneTimelineChanged.dispatch();
+
+	} );
 
 	loadSceneTimeline();
 

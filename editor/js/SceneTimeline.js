@@ -28,14 +28,21 @@ function parseTimeline( raw ) {
 	try {
 		const parsed = JSON.parse( raw );
 		if ( ! parsed || ! Array.isArray( parsed.nodes ) ) return null;
-		return { duration: Number( parsed.duration ) || 0, nodes: parsed.nodes };
+		return {
+			duration: Number( parsed.duration ) || 0,
+			nodes: parsed.nodes,
+			// Per-track ( "uuid::property" ) master-value snapshots that relative keyframes
+			// (delta/factor/hsl-offset) are combined with. Absent/legacy tracks have no entry
+			// here and are evaluated purely from each node's absolute `value`, unchanged.
+			bases: ( parsed.bases && typeof parsed.bases === 'object' ) ? parsed.bases : {},
+		};
 	} catch ( err ) {
 		console.error( 'Failed to parse scene timeline JSON:', err );
 		return null;
 	}
 }
 
-function createNode( { targetUuid, property, time, mode, value, easing } ) {
+function createNode( { targetUuid, property, time, mode, value, delta, easing } ) {
 	return {
 		id: uuidv4(),
 		type: 'keyframe',
@@ -43,7 +50,8 @@ function createNode( { targetUuid, property, time, mode, value, easing } ) {
 		property,
 		time,
 		mode: mode || 'set',
-		value,
+		value, // baked absolute value - always kept in sync, read by legacy/unaware players
+		delta, // relative-to-master value (only set for relative-capable properties)
 		easing: easing || 'linear',
 		inputs: {},
 		outputs: {},
@@ -78,9 +86,11 @@ function groupTracksByTarget( nodes ) {
 	return map;
 }
 
-// Evaluates one already-sorted track at time `t`. Returns undefined before the track's
-// first keyframe (leaves the property untouched).
-function evaluateTrack( nodes, t ) {
+// Evaluates one already-sorted track at time `t` by walking the keyframe list and
+// picking/interpolating whatever `pick()` extracts from each node (the absolute
+// `value` for legacy tracks, or the relative `delta` for master-relative ones).
+// Returns undefined before the track's first keyframe (leaves the property untouched).
+function interpolateField( nodes, t, pick ) {
 	if ( ! nodes.length || t < nodes[ 0 ].time ) return undefined;
 
 	let prev = nodes[ 0 ];
@@ -96,13 +106,163 @@ function evaluateTrack( nodes, t ) {
 	}
 
 	// No upcoming node, or the upcoming node is a hard "set" not yet reached: hold at prev
-	if ( ! next || next.mode !== 'tween' ) return prev.value;
+	if ( ! next || next.mode !== 'tween' ) return pick( prev );
 
 	const span = next.time - prev.time;
-	if ( span <= 0 ) return next.value;
+	if ( span <= 0 ) return pick( next );
 	const rawT = Math.min( 1, Math.max( 0, ( t - prev.time ) / span ) );
 	const easing = EASINGS[ next.easing || 'linear' ] || EASINGS.linear;
-	return lerpValue( prev.value, next.value, easing( rawT ) );
+	return lerpValue( pick( prev ), pick( next ), easing( rawT ) );
+}
+
+function evaluateTrack( nodes, t ) {
+	return interpolateField( nodes, t, ( n ) => n.value );
+}
+
+// Relative-track counterpart of evaluateTrack(): interpolates each node's `delta` (not
+// `value`) and combines the result with the track's live master/base value. `normalize`
+// should be true for rotation tracks, to keep wrapped angles in the -π..π range.
+function evaluateRelativeTrack( nodes, t, base, op, normalize ) {
+	const delta = interpolateField( nodes, t, ( n ) => ( n.delta !== undefined ? n.delta : n.value ) );
+	if ( delta === undefined || base === undefined ) return undefined;
+	return combineWithBase( base, delta, op, normalize );
+}
+
+// Per-property "how does a keyframe relate to the master value" table. Properties not
+// listed here (visible, and any future enum/asset-reference property) are intentionally
+// absolute-only - there's no sane numeric delta for a boolean or an asset path.
+const RELATIVE_OPS = {
+	position: 'add', 'position.x': 'add', 'position.y': 'add', 'position.z': 'add',
+	rotation: 'add', 'rotation.x': 'add', 'rotation.y': 'add', 'rotation.z': 'add',
+	scale: 'multiply', 'scale.x': 'multiply', 'scale.y': 'multiply', 'scale.z': 'multiply',
+	fov: 'add', near: 'add', far: 'add', intensity: 'add',
+	color: 'hsl', color_texture: 'hsl',
+};
+
+function getRelativeOp( property ) {
+	return RELATIVE_OPS[ property ] || null;
+}
+
+function isVector( v ) { return !! v && typeof v === 'object' && 'x' in v; }
+
+function normalizeAngle( rad ) {
+	const twoPi = Math.PI * 2;
+	let a = rad % twoPi;
+	if ( a > Math.PI ) a -= twoPi;
+	if ( a < - Math.PI ) a += twoPi;
+	return a;
+}
+
+function hexToHsl( hex ) {
+	const n = parseInt( String( hex || '#ffffff' ).replace( '#', '' ), 16 ) || 0xffffff;
+	const r = ( ( n >> 16 ) & 255 ) / 255, g = ( ( n >> 8 ) & 255 ) / 255, b = ( n & 255 ) / 255;
+	const max = Math.max( r, g, b ), min = Math.min( r, g, b );
+	const l = ( max + min ) / 2;
+	let h = 0, s = 0;
+	const d = max - min;
+	if ( d !== 0 ) {
+		s = d / ( 1 - Math.abs( 2 * l - 1 ) );
+		switch ( max ) {
+			case r: h = ( ( g - b ) / d ) % 6; break;
+			case g: h = ( b - r ) / d + 2; break;
+			default: h = ( r - g ) / d + 4; break;
+		}
+		h *= 60;
+		if ( h < 0 ) h += 360;
+	}
+	return { h, s, l };
+}
+
+function hslToHex( { h, s, l } ) {
+	h = ( ( h % 360 ) + 360 ) % 360;
+	s = Math.min( 1, Math.max( 0, s ) );
+	l = Math.min( 1, Math.max( 0, l ) );
+	const c = ( 1 - Math.abs( 2 * l - 1 ) ) * s;
+	const x = c * ( 1 - Math.abs( ( h / 60 ) % 2 - 1 ) );
+	const m = l - c / 2;
+	let r1 = 0, g1 = 0, b1 = 0;
+	if ( h < 60 ) { r1 = c; g1 = x; }
+	else if ( h < 120 ) { r1 = x; g1 = c; }
+	else if ( h < 180 ) { g1 = c; b1 = x; }
+	else if ( h < 240 ) { g1 = x; b1 = c; }
+	else if ( h < 300 ) { r1 = x; b1 = c; }
+	else { r1 = c; b1 = x; }
+	const toHex = ( v ) => Math.round( ( v + m ) * 255 ).toString( 16 ).padStart( 2, '0' );
+	return '#' + toHex( r1 ) + toHex( g1 ) + toHex( b1 );
+}
+
+function combineWithBase( base, delta, op, normalize ) {
+	let result;
+
+	if ( op === 'multiply' ) {
+		if ( typeof base === 'number' ) result = base * ( Number( delta ?? 1 ) );
+		else if ( isVector( base ) ) {
+			result = {
+				x: base.x * ( delta?.x ?? 1 ),
+				y: base.y * ( delta?.y ?? 1 ),
+				z: base.z * ( delta?.z ?? 1 ),
+			};
+		} else result = base;
+	} else if ( op === 'hsl' ) {
+		const baseHsl = hexToHsl( base );
+		result = hslToHex( {
+			h: baseHsl.h + ( delta?.h || 0 ),
+			s: baseHsl.s + ( delta?.s || 0 ),
+			l: baseHsl.l + ( delta?.l || 0 ),
+		} );
+	} else {
+		if ( typeof base === 'number' ) result = base + ( Number( delta ?? 0 ) );
+		else if ( isVector( base ) ) {
+			result = {
+				x: base.x + ( delta?.x || 0 ),
+				y: base.y + ( delta?.y || 0 ),
+				z: base.z + ( delta?.z || 0 ),
+			};
+		} else result = base;
+	}
+
+	if ( normalize ) {
+		if ( typeof result === 'number' ) result = normalizeAngle( result );
+		else if ( isVector( result ) ) {
+			result = { x: normalizeAngle( result.x ), y: normalizeAngle( result.y ), z: normalizeAngle( result.z ) };
+		}
+	}
+
+	return result;
+}
+
+// Inverse of combineWithBase(): given the track's base and a freshly-authored absolute
+// value, derives the delta/factor/hsl-offset to store on the keyframe.
+function invertFromBase( base, absolute, op ) {
+	const safeDiv = ( a, b ) => ( b === 0 ? 1 : a / b );
+
+	if ( op === 'multiply' ) {
+		if ( typeof base === 'number' ) return safeDiv( Number( absolute ), base );
+		if ( isVector( base ) ) {
+			return {
+				x: safeDiv( absolute?.x ?? base.x, base.x ),
+				y: safeDiv( absolute?.y ?? base.y, base.y ),
+				z: safeDiv( absolute?.z ?? base.z, base.z ),
+			};
+		}
+		return 1;
+	}
+
+	if ( op === 'hsl' ) {
+		const baseHsl = hexToHsl( base );
+		const absHsl = hexToHsl( absolute );
+		return { h: absHsl.h - baseHsl.h, s: absHsl.s - baseHsl.s, l: absHsl.l - baseHsl.l };
+	}
+
+	if ( typeof base === 'number' ) return Number( absolute ) - base;
+	if ( isVector( base ) ) {
+		return {
+			x: ( absolute?.x ?? base.x ) - base.x,
+			y: ( absolute?.y ?? base.y ) - base.y,
+			z: ( absolute?.z ?? base.z ) - base.z,
+		};
+	}
+	return 0;
 }
 
 // Reads an object's CURRENT value for `property` (dot-path) - used when authoring a new
@@ -204,6 +364,10 @@ export {
 	createNode,
 	groupTracksByTarget,
 	evaluateTrack,
+	evaluateRelativeTrack,
+	getRelativeOp,
+	combineWithBase,
+	invertFromBase,
 	readPropertyValue,
 	applyPropertyValue,
 	getAnimatablePropertiesForObject,

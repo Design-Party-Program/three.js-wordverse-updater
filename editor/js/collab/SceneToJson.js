@@ -162,7 +162,7 @@
       console.log(vrModels, lights, primitives, wpElements, groups);
       return {
         vrModels, lights, primitives, wpElements, groups, cameras,
-        timeline: editor.scene.userData.timeline || { duration: 10, nodes: [] },
+        timeline: editor.scene.userData.timeline || { duration: 10, nodes: [], bases: {} },
       }
     }
 
