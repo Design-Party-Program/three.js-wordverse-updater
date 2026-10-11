@@ -33,6 +33,10 @@ function Animation( editor ) {
 	} );
 
 	// Top bar - playback controls
+	const legacyClipLabel = new UIText( 'GLTF Clip Playback (read-only, baked into imported models)' );
+	legacyClipLabel.dom.style.cssText = 'display:block;padding:4px 10px 0;font-size:10px;color:#888;flex-shrink:0;';
+	container.add( legacyClipLabel );
+
 	const controlsPanel = new UIPanel();
 	controlsPanel.dom.style.padding = '6px 10px';
 	controlsPanel.dom.style.borderBottom = '1px solid #ccc';
@@ -602,7 +606,8 @@ function Animation( editor ) {
 	container.add( sceneTimelineSection );
 
 	const sceneTimelineHeaderRow = new UIRow();
-	sceneTimelineHeaderRow.add( new UIText( 'Scene Timeline' ).setClass( 'Label' ).setFontSize( '11px' ) );
+	sceneTimelineHeaderRow.dom.style.cssText = 'display:flex;align-items:center;gap:6px;padding:2px 10px;';
+	sceneTimelineHeaderRow.add( new UIText( 'Scene Timeline' ).setClass( 'Label' ).setFontSize( '11px' ).setFontWeight( 'bold' ) );
 	const sceneTimelineDuration = new UINumber( 10 ).setWidth( '50px' ).setRange( 0.1, 3600 ).onChange( function () {
 
 		getTimelineData().duration = sceneTimelineDuration.getValue();
@@ -613,9 +618,12 @@ function Animation( editor ) {
 	sceneTimelineHeaderRow.add( sceneTimelineDuration );
 	sceneTimelineSection.add( sceneTimelineHeaderRow );
 
-	// Scrub area (own playhead, independent of the GLTF-clip mixer above)
+	// Scrub area (own playhead, independent of the GLTF-clip mixer above). Uses a
+	// neutral mid-grey so it stays visible in both the light and dark editor themes
+	// (a black-tinted rgba disappears against the dark theme's near-black background).
 	const sceneTimelineArea = document.createElement( 'div' );
-	sceneTimelineArea.style.cssText = 'position:relative;height:16px;margin:4px 10px;background:rgba(0,0,0,0.05);cursor:pointer;';
+	sceneTimelineArea.style.cssText = 'position:relative;height:20px;margin:4px 10px;' +
+		'background:rgba(128,128,128,0.25);border:1px solid rgba(128,128,128,0.4);cursor:pointer;';
 	sceneTimelineSection.dom.appendChild( sceneTimelineArea );
 
 	const sceneTimelinePlayhead = document.createElement( 'div' );
@@ -628,6 +636,7 @@ function Animation( editor ) {
 
 	// Add-keyframe controls
 	const sceneTimelineAddRow = new UIRow();
+	sceneTimelineAddRow.dom.style.cssText = 'display:flex;align-items:center;gap:4px;padding:2px 10px;';
 	const scenePropertySelect = new UISelect().setWidth( '110px' );
 	const sceneModeSelect = new UISelect().setWidth( '60px' ).setOptions( { set: 'Set', tween: 'Tween' } );
 	const sceneEasingSelect = new UISelect().setWidth( '90px' ).setOptions( {
@@ -650,6 +659,7 @@ function Animation( editor ) {
 
 	// Selected-keyframe editor
 	const sceneTimelineEditRow = new UIRow();
+	sceneTimelineEditRow.dom.style.cssText = 'display:flex;align-items:center;gap:4px;padding:2px 10px;';
 	sceneTimelineEditRow.dom.style.display = 'none';
 	const sceneEditValueInput = new UIInput( '' ).setWidth( '110px' );
 	const sceneEditApplyButton = new UIButton( 'Apply' ).onClick( applySelectedNodeEdit );
@@ -963,6 +973,10 @@ function Animation( editor ) {
 	signals.editorCleared.add( loadSceneTimeline );
 
 	loadSceneTimeline();
+
+	// Surface the editable Scene Timeline first; the legacy read-only GLTF-clip
+	// player (built further up in this function) moves below it
+	container.dom.insertBefore( sceneTimelineSection.dom, legacyClipLabel.dom );
 
 	// Show panel on initial load
 	container.setDisplay( 'flex' );
