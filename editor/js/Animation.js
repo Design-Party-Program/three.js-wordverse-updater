@@ -169,7 +169,7 @@ function Animation( editor ) {
 	sceneTimelineBody.appendChild( sceneTimelineRuler );
 
 	const rulerGutterSpacer = document.createElement( 'div' );
-	rulerGutterSpacer.style.cssText = 'flex-shrink:0;';
+	rulerGutterSpacer.style.cssText = 'flex-shrink:0;box-sizing:border-box;';
 	sceneTimelineRuler.appendChild( rulerGutterSpacer );
 
 	// Uses a neutral mid-grey so it stays visible in both the light and dark editor
@@ -752,7 +752,7 @@ function Animation( editor ) {
 			objectRow.style.cssText = 'display:flex;align-items:center;height:18px;font-size:10px;cursor:pointer;';
 
 			const objectLabelArea = document.createElement( 'div' );
-			objectLabelArea.style.cssText = 'display:flex;align-items:center;flex-shrink:0;width:' + labelGutterWidth + 'px;';
+			objectLabelArea.style.cssText = 'display:flex;align-items:center;flex-shrink:0;box-sizing:border-box;width:' + labelGutterWidth + 'px;';
 			objectRow.appendChild( objectLabelArea );
 
 			const disclosure = document.createElement( 'span' );
@@ -796,7 +796,10 @@ function Animation( editor ) {
 				trackRow.style.cssText = 'display:flex;align-items:center;height:18px;font-size:10px;';
 
 				const trackLabelArea = document.createElement( 'div' );
-				trackLabelArea.style.cssText = 'display:flex;align-items:center;gap:3px;flex-shrink:0;' +
+				// border-box so the 12px indent is absorbed into labelGutterWidth instead of
+				// adding to it - keeps this row's timeline-surface start aligned with the
+				// ruler's and the object row's, whose gutters have no padding of their own.
+				trackLabelArea.style.cssText = 'display:flex;align-items:center;gap:3px;flex-shrink:0;box-sizing:border-box;' +
 					'width:' + labelGutterWidth + 'px;padding-left:12px;';
 				trackRow.appendChild( trackLabelArea );
 
