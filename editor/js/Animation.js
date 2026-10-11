@@ -219,13 +219,17 @@ function Animation( editor ) {
 		sceneEasingSelect.dom.style.display = sceneModeSelect.getValue() === 'tween' ? '' : 'none';
 
 	} );
-	const sceneAddKeyframeButton = new UIButton( 'Add at Playhead' ).onClick( addKeyframeAtPlayhead );
+	const sceneAddKeyframeButton = document.createElement( 'div' );
+	sceneAddKeyframeButton.title = 'Add keyframe at playhead';
+	sceneAddKeyframeButton.style.cssText = 'width:10px;height:10px;flex-shrink:0;background:#4CAF50;' +
+		'border:1px solid rgba(255,255,255,0.6);transform:rotate(45deg);cursor:pointer;margin:0 4px;';
+	sceneAddKeyframeButton.addEventListener( 'click', addKeyframeAtPlayhead );
 
 	sceneTimelineAddRow.add( new UIText( 'Property' ).setWidth( '50px' ) );
 	sceneTimelineAddRow.add( scenePropertySelect );
 	sceneTimelineAddRow.add( sceneModeSelect );
 	sceneTimelineAddRow.add( sceneEasingSelect );
-	sceneTimelineAddRow.add( sceneAddKeyframeButton );
+	sceneTimelineAddRow.dom.appendChild( sceneAddKeyframeButton );
 	sceneTimelineSection.add( sceneTimelineAddRow );
 
 	// Selected-keyframe editor. The value editor only applies to a single selection
@@ -343,12 +347,14 @@ function Animation( editor ) {
 		if ( ! object ) {
 
 			scenePropertySelect.setOptions( {} );
-			sceneAddKeyframeButton.dom.disabled = true;
+			sceneAddKeyframeButton.style.opacity = '0.3';
+			sceneAddKeyframeButton.style.pointerEvents = 'none';
 			return;
 
 		}
 
-		sceneAddKeyframeButton.dom.disabled = false;
+		sceneAddKeyframeButton.style.opacity = '';
+		sceneAddKeyframeButton.style.pointerEvents = '';
 		const props = getAnimatablePropertiesForObject( object );
 		const options = {};
 		props.forEach( ( p ) => { options[ p ] = p; } );
@@ -356,19 +362,14 @@ function Animation( editor ) {
 
 	}
 
-	function addKeyframeAtPlayhead() {
+	// Shared by the global "new track" add button and each existing track row's quick-add
+	// diamond button - creates/overwrites a keyframe for `uuid`::`property` at the playhead.
+	function addKeyframeForTrack( uuid, property, value ) {
 
-		const object = editor.selected;
-		if ( ! object ) return;
-
-		const property = scenePropertySelect.getValue();
-		if ( ! property ) return;
-
-		const value = readPropertyValue( object, property );
 		if ( value === undefined ) return;
 
 		const timeline = getTimelineData();
-		const key = object.uuid + '::' + property;
+		const key = uuid + '::' + property;
 		const op = getRelativeOp( property );
 		let delta;
 
@@ -383,7 +384,7 @@ function Animation( editor ) {
 		}
 
 		const node = createNode( {
-			targetUuid: object.uuid,
+			targetUuid: uuid,
 			property,
 			time: sceneTimelineTime,
 			mode: sceneModeSelect.getValue(),
@@ -406,6 +407,18 @@ function Animation( editor ) {
 		}
 
 		signals.sceneTimelineChanged.dispatch();
+
+	}
+
+	function addKeyframeAtPlayhead() {
+
+		const object = editor.selected;
+		if ( ! object ) return;
+
+		const property = scenePropertySelect.getValue();
+		if ( ! property ) return;
+
+		addKeyframeForTrack( object.uuid, property, readPropertyValue( object, property ) );
 
 	}
 
@@ -786,6 +799,42 @@ function Animation( editor ) {
 				trackLabel.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#aaa;';
 				trackLabel.textContent = property;
 				trackLabelArea.appendChild( trackLabel );
+
+				const trackObject = editor.objectByUuid( uuid );
+				const trackValueInput = document.createElement( 'input' );
+				trackValueInput.type = 'text';
+				trackValueInput.title = 'Value used by the add-keyframe button';
+				trackValueInput.value = JSON.stringify(
+					trackObject ? readPropertyValue( trackObject, property ) : nodes[ nodes.length - 1 ].value
+				);
+				trackValueInput.style.cssText = 'flex-shrink:0;width:44px;font-size:9px;padding:1px;';
+				trackValueInput.addEventListener( 'mousedown', ( event ) => event.stopPropagation() );
+				trackLabelArea.appendChild( trackValueInput );
+
+				const trackAddButton = document.createElement( 'div' );
+				trackAddButton.title = 'Add keyframe at playhead';
+				trackAddButton.style.cssText = 'width:8px;height:8px;flex-shrink:0;background:#4CAF50;' +
+					'border:1px solid rgba(255,255,255,0.6);transform:rotate(45deg);cursor:pointer;';
+				trackAddButton.addEventListener( 'click', function ( event ) {
+
+					event.stopPropagation();
+
+					let parsedValue;
+					try {
+
+						parsedValue = JSON.parse( trackValueInput.value );
+
+					} catch ( err ) {
+
+						console.warn( 'Invalid keyframe value JSON:', err );
+						return;
+
+					}
+
+					addKeyframeForTrack( uuid, property, parsedValue );
+
+				} );
+				trackLabelArea.appendChild( trackAddButton );
 
 				const loopToggle = document.createElement( 'input' );
 				loopToggle.type = 'checkbox';
