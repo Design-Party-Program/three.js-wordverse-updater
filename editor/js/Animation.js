@@ -762,7 +762,12 @@ function Animation( editor ) {
 
 			const objectLabel = document.createElement( 'div' );
 			objectLabel.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ccc;font-weight:bold;';
-			objectLabel.textContent = ( object ? ( object.name || 'Object' ) : uuid.substring( 0, 8 ) ) + ' (' + properties.length + ')';
+			const objectWpData = object && object.userData && object.userData.wpData;
+			const objectFallbackName = objectWpData && ( objectWpData.subtype || objectWpData.type );
+			const objectDisplayName = object
+				? ( object.name || objectFallbackName || 'Object' )
+				: uuid.substring( 0, 8 );
+			objectLabel.textContent = objectDisplayName + ' (' + properties.length + ')';
 			objectLabelArea.appendChild( objectLabel );
 
 			objectRow.addEventListener( 'click', function () {
@@ -800,6 +805,19 @@ function Animation( editor ) {
 				trackLabel.textContent = property;
 				trackLabelArea.appendChild( trackLabel );
 
+				const loopToggle = document.createElement( 'input' );
+				loopToggle.type = 'checkbox';
+				loopToggle.title = 'Loop this track';
+				loopToggle.checked = !! timeline.loops[ key ];
+				loopToggle.style.cssText = 'flex-shrink:0;width:11px;height:11px;margin:0;';
+				loopToggle.addEventListener( 'change', function () {
+
+					timeline.loops[ key ] = loopToggle.checked;
+					signals.sceneTimelineChanged.dispatch();
+
+				} );
+				trackLabelArea.appendChild( loopToggle );
+
 				const trackObject = editor.objectByUuid( uuid );
 				const trackValueInput = document.createElement( 'input' );
 				trackValueInput.type = 'text';
@@ -835,19 +853,6 @@ function Animation( editor ) {
 
 				} );
 				trackLabelArea.appendChild( trackAddButton );
-
-				const loopToggle = document.createElement( 'input' );
-				loopToggle.type = 'checkbox';
-				loopToggle.title = 'Loop this track';
-				loopToggle.checked = !! timeline.loops[ key ];
-				loopToggle.style.cssText = 'flex-shrink:0;width:11px;height:11px;margin:0;';
-				loopToggle.addEventListener( 'change', function () {
-
-					timeline.loops[ key ] = loopToggle.checked;
-					signals.sceneTimelineChanged.dispatch();
-
-				} );
-				trackLabelArea.appendChild( loopToggle );
 
 				const trackTimeline = document.createElement( 'div' );
 				trackTimeline.style.cssText = 'position:relative;flex:1;height:100%;background:rgba(0,0,0,0.02);';
