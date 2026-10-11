@@ -165,25 +165,40 @@ function Animation( editor ) {
 	sceneTimelineAddRow.add( sceneAddKeyframeButton );
 	sceneTimelineSection.add( sceneTimelineAddRow );
 
-	// Selected-keyframe editor
+	// Selected-keyframe editor. The value editor only applies to a single selection
+	// (editing one value across differing properties/types is ambiguous); delete works
+	// on the whole selection.
 	const sceneTimelineEditRow = new UIRow();
 	sceneTimelineEditRow.dom.style.cssText = 'display:flex;align-items:center;gap:4px;padding:2px 10px;';
 	sceneTimelineEditRow.dom.style.display = 'none';
+
+	const sceneEditValueGroup = document.createElement( 'div' );
+	sceneEditValueGroup.style.cssText = 'display:flex;align-items:center;gap:4px;';
 	const sceneEditValueInput = new UIInput( '' ).setWidth( '110px' );
+	sceneEditValueInput.dom.addEventListener( 'keydown', function ( event ) {
+
+		if ( event.key === 'Enter' ) applySelectedNodeEdit();
+
+	} );
 	const sceneEditApplyButton = new UIButton( 'Apply' ).onClick( applySelectedNodeEdit );
-	const sceneEditDeleteButton = new UIButton( '✕' ).onClick( deleteSelectedNode );
-	sceneEditDeleteButton.dom.title = 'Delete keyframe';
-	sceneTimelineEditRow.add( new UIText( 'Value' ).setWidth( '50px' ) );
-	sceneTimelineEditRow.add( sceneEditValueInput );
-	sceneTimelineEditRow.add( sceneEditApplyButton );
+	sceneEditValueGroup.appendChild( new UIText( 'Value' ).setWidth( '50px' ).dom );
+	sceneEditValueGroup.appendChild( sceneEditValueInput.dom );
+	sceneEditValueGroup.appendChild( sceneEditApplyButton.dom );
+	sceneTimelineEditRow.dom.appendChild( sceneEditValueGroup );
+
+	const sceneEditDeleteButton = new UIButton( '✕ Delete' ).onClick( deleteSelectedNodes );
+	sceneEditDeleteButton.dom.title = 'Delete selected keyframe(s)';
 	sceneTimelineEditRow.add( sceneEditDeleteButton );
 	sceneTimelineSection.add( sceneTimelineEditRow );
 
 	let sceneTimelineTime = 0;
-	let selectedNodeId = null;
+	let selectedNodeIds = new Set();
 	let draggingNodeId = null;
+	let dragAnchorStartTime = 0;
+	let dragOriginTimes = null; // Map<nodeId, time> snapshotted when a group-drag begins
 	let isScenePlaying = false;
 	let lastFrameTimestamp = null;
+	const collapsedObjectUuids = new Set();
 
 	// The timeline is authored on editor.scene.userData so it travels with Save/Load +
 	// MQTT sceneLiveUpdate the same way wpData/groups/cameras already do.
@@ -262,12 +277,9 @@ function Animation( editor ) {
 
 	}
 
-	function selectNode( nodeId ) {
+	function updateEditRowForSelection() {
 
-		selectedNodeId = nodeId;
-		const node = findNode( nodeId );
-
-		if ( ! node ) {
+		if ( selectedNodeIds.size === 0 ) {
 
 			sceneTimelineEditRow.dom.style.display = 'none';
 			return;
@@ -275,13 +287,51 @@ function Animation( editor ) {
 		}
 
 		sceneTimelineEditRow.dom.style.display = '';
-		sceneEditValueInput.setValue( JSON.stringify( node.value ) );
+
+		if ( selectedNodeIds.size === 1 ) {
+
+			const node = findNode( [ ...selectedNodeIds ][ 0 ] );
+			sceneEditValueGroup.style.display = 'flex';
+			if ( node ) sceneEditValueInput.setValue( JSON.stringify( node.value ) );
+			sceneEditDeleteButton.setTextContent( '✕ Delete' );
+
+		} else {
+
+			sceneEditValueGroup.style.display = 'none';
+			sceneEditDeleteButton.setTextContent( '✕ Delete (' + selectedNodeIds.size + ')' );
+
+		}
+
+	}
+
+	function selectNode( nodeId ) {
+
+		selectedNodeIds = new Set( [ nodeId ] );
+		updateEditRowForSelection();
+
+	}
+
+	function toggleNodeSelection( nodeId ) {
+
+		if ( selectedNodeIds.has( nodeId ) ) {
+
+			selectedNodeIds.delete( nodeId );
+
+		} else {
+
+			selectedNodeIds.add( nodeId );
+
+		}
+
+		updateEditRowForSelection();
 
 	}
 
 	function applySelectedNodeEdit() {
 
-		const node = findNode( selectedNodeId );
+		if ( selectedNodeIds.size !== 1 ) return;
+
+		const node = findNode( [ ...selectedNodeIds ][ 0 ] );
 		if ( ! node ) return;
 
 		try {
@@ -299,14 +349,13 @@ function Animation( editor ) {
 
 	}
 
-	function deleteSelectedNode() {
+	function deleteSelectedNodes() {
+
+		if ( selectedNodeIds.size === 0 ) return;
 
 		const timeline = getTimelineData();
-		const index = timeline.nodes.findIndex( ( n ) => n.id === selectedNodeId );
-		if ( index === - 1 ) return;
-
-		timeline.nodes.splice( index, 1 );
-		selectedNodeId = null;
+		timeline.nodes = timeline.nodes.filter( ( n ) => ! selectedNodeIds.has( n.id ) );
+		selectedNodeIds = new Set();
 		sceneTimelineEditRow.dom.style.display = 'none';
 		signals.sceneTimelineChanged.dispatch();
 
@@ -440,18 +489,23 @@ function Animation( editor ) {
 
 		}
 
-		if ( draggingNodeId ) {
+		if ( draggingNodeId && dragOriginTimes ) {
 
-			const node = findNode( draggingNodeId );
-			if ( node ) {
+			const timeline = getTimelineData();
+			const rect = sceneTimelineArea.getBoundingClientRect();
+			const percent = Math.min( 1, Math.max( 0, ( event.clientX - rect.left ) / rect.width ) );
+			const anchorNewTime = percent * timeline.duration;
+			const delta = anchorNewTime - dragAnchorStartTime;
 
-				const timeline = getTimelineData();
-				const rect = sceneTimelineArea.getBoundingClientRect();
-				const percent = Math.min( 1, Math.max( 0, ( event.clientX - rect.left ) / rect.width ) );
-				node.time = percent * timeline.duration;
-				renderSceneTimelineTracks();
+			// Move every selected keyframe by the same delta, preserving their relative spacing
+			dragOriginTimes.forEach( ( originalTime, id ) => {
 
-			}
+				const n = findNode( id );
+				if ( n ) n.time = Math.min( timeline.duration, Math.max( 0, originalTime + delta ) );
+
+			} );
+
+			renderSceneTimelineTracks();
 
 		}
 
@@ -464,6 +518,7 @@ function Animation( editor ) {
 		if ( draggingNodeId ) {
 
 			draggingNodeId = null;
+			dragOriginTimes = null;
 			signals.sceneTimelineChanged.dispatch();
 
 		}
@@ -479,50 +534,124 @@ function Animation( editor ) {
 
 		const tracks = groupTracksByTarget( timeline.nodes );
 
+		// Nest the per-property tracks under one collapsible row per target object, so
+		// multiple timelines affecting the same object are grouped together.
+		const byObject = new Map(); // uuid -> [{ property, nodes }]
 		tracks.forEach( ( nodes, key ) => {
 
 			const separatorIndex = key.indexOf( '::' );
 			const uuid = key.substring( 0, separatorIndex );
 			const property = key.substring( separatorIndex + 2 );
+			const list = byObject.get( uuid ) || [];
+			list.push( { property, nodes } );
+			byObject.set( uuid, list );
+
+		} );
+
+		byObject.forEach( ( properties, uuid ) => {
+
 			const object = editor.objectByUuid( uuid );
+			const isCollapsed = collapsedObjectUuids.has( uuid );
 
-			const trackRow = document.createElement( 'div' );
-			trackRow.style.cssText = 'display:flex;align-items:center;height:18px;font-size:10px;';
+			const objectRow = document.createElement( 'div' );
+			objectRow.style.cssText = 'display:flex;align-items:center;height:18px;font-size:10px;cursor:pointer;';
 
-			const trackLabel = document.createElement( 'div' );
-			trackLabel.style.cssText = 'width:120px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#aaa;';
-			trackLabel.textContent = ( object ? ( object.name || 'Object' ) : uuid.substring( 0, 8 ) ) + ' · ' + property;
-			trackRow.appendChild( trackLabel );
+			const disclosure = document.createElement( 'span' );
+			disclosure.textContent = isCollapsed ? '▶' : '▼';
+			disclosure.style.cssText = 'width:12px;flex-shrink:0;color:#aaa;';
+			objectRow.appendChild( disclosure );
 
-			const trackTimeline = document.createElement( 'div' );
-			trackTimeline.style.cssText = 'position:relative;flex:1;height:100%;background:rgba(0,0,0,0.02);';
+			const objectLabel = document.createElement( 'div' );
+			objectLabel.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ccc;font-weight:bold;';
+			objectLabel.textContent = ( object ? ( object.name || 'Object' ) : uuid.substring( 0, 8 ) ) + ' (' + properties.length + ')';
+			objectRow.appendChild( objectLabel );
 
-			nodes.forEach( ( node ) => {
+			objectRow.addEventListener( 'click', function () {
 
-				const diamond = document.createElement( 'div' );
-				const isSelected = node.id === selectedNodeId;
-				const left = timeline.duration > 0 ? ( node.time / timeline.duration ) * 100 : 0;
-				diamond.style.cssText = 'position:absolute;top:50%;width:8px;height:8px;' +
-					'background:' + ( node.mode === 'tween' ? '#2196F3' : '#FF9800' ) + ';' +
-					'border:1px solid ' + ( isSelected ? '#fff' : 'rgba(0,0,0,0.3)' ) + ';' +
-					'transform:translate(-50%,-50%) rotate(45deg);cursor:ew-resize;left:' + left + '%;';
-				diamond.title = property + ' @ ' + node.time.toFixed( 2 ) + 's (' + node.mode + ')';
+				if ( collapsedObjectUuids.has( uuid ) ) {
 
-				diamond.addEventListener( 'mousedown', function ( event ) {
+					collapsedObjectUuids.delete( uuid );
 
-					event.stopPropagation();
-					draggingNodeId = node.id;
-					selectNode( node.id );
-					renderSceneTimelineTracks();
+				} else {
 
-				} );
+					collapsedObjectUuids.add( uuid );
 
-				trackTimeline.appendChild( diamond );
+				}
+
+				renderSceneTimelineTracks();
 
 			} );
 
-			trackRow.appendChild( trackTimeline );
-			sceneTimelineTrackList.appendChild( trackRow );
+			sceneTimelineTrackList.appendChild( objectRow );
+
+			if ( isCollapsed ) return;
+
+			properties.forEach( ( { property, nodes } ) => {
+
+				const trackRow = document.createElement( 'div' );
+				trackRow.style.cssText = 'display:flex;align-items:center;height:18px;font-size:10px;padding-left:12px;';
+
+				const trackLabel = document.createElement( 'div' );
+				trackLabel.style.cssText = 'width:108px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#aaa;';
+				trackLabel.textContent = property;
+				trackRow.appendChild( trackLabel );
+
+				const trackTimeline = document.createElement( 'div' );
+				trackTimeline.style.cssText = 'position:relative;flex:1;height:100%;background:rgba(0,0,0,0.02);';
+
+				nodes.forEach( ( node ) => {
+
+					const diamond = document.createElement( 'div' );
+					const isSelected = selectedNodeIds.has( node.id );
+					const left = timeline.duration > 0 ? ( node.time / timeline.duration ) * 100 : 0;
+					diamond.style.cssText = 'position:absolute;top:50%;width:8px;height:8px;' +
+						'background:' + ( node.mode === 'tween' ? '#2196F3' : '#FF9800' ) + ';' +
+						'border:1px solid ' + ( isSelected ? '#fff' : 'rgba(0,0,0,0.3)' ) + ';' +
+						'transform:translate(-50%,-50%) rotate(45deg);cursor:ew-resize;left:' + left + '%;';
+					diamond.title = property + ' @ ' + node.time.toFixed( 2 ) + 's (' + node.mode + ')';
+
+					diamond.addEventListener( 'mousedown', function ( event ) {
+
+						event.stopPropagation();
+
+						if ( event.shiftKey ) {
+
+							toggleNodeSelection( node.id );
+
+						} else if ( ! selectedNodeIds.has( node.id ) ) {
+
+							selectNode( node.id );
+
+						}
+
+						if ( selectedNodeIds.has( node.id ) ) {
+
+							// Snapshot every selected keyframe's time so the whole selection
+							// drags together, preserving relative spacing
+							draggingNodeId = node.id;
+							dragAnchorStartTime = node.time;
+							dragOriginTimes = new Map();
+							selectedNodeIds.forEach( ( id ) => {
+
+								const n = findNode( id );
+								if ( n ) dragOriginTimes.set( id, n.time );
+
+							} );
+
+						}
+
+						renderSceneTimelineTracks();
+
+					} );
+
+					trackTimeline.appendChild( diamond );
+
+				} );
+
+				trackRow.appendChild( trackTimeline );
+				sceneTimelineTrackList.appendChild( trackRow );
+
+			} );
 
 		} );
 
@@ -539,7 +668,7 @@ function Animation( editor ) {
 
 		isScenePlaying = false;
 		sceneTimelineTime = 0;
-		selectedNodeId = null;
+		selectedNodeIds = new Set();
 		sceneTimelineEditRow.dom.style.display = 'none';
 		renderSceneTimelineTracks();
 		updateSceneTimelinePlayheadPosition();
