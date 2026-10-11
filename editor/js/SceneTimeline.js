@@ -35,6 +35,14 @@ function parseTimeline( raw ) {
 			// (delta/factor/hsl-offset) are combined with. Absent/legacy tracks have no entry
 			// here and are evaluated purely from each node's absolute `value`, unchanged.
 			bases: ( parsed.bases && typeof parsed.bases === 'object' ) ? parsed.bases : {},
+			// Per-track ( "uuid::property" ) loop flags - a looping track's own first->last
+			// keyframe span repeats for as long as the master timeline keeps playing.
+			loops: ( parsed.loops && typeof parsed.loops === 'object' ) ? parsed.loops : {},
+			// Whether the r3f player should start this timeline automatically on scene load.
+			autoplay: !! parsed.autoplay,
+			// Whether the master timeline restarts from 0 after reaching its duration,
+			// instead of stopping. Independent of individual tracks' own loop flag.
+			loop: !! parsed.loop,
 		};
 	} catch ( err ) {
 		console.error( 'Failed to parse scene timeline JSON:', err );
@@ -141,6 +149,24 @@ const RELATIVE_OPS = {
 
 function getRelativeOp( property ) {
 	return RELATIVE_OPS[ property ] || null;
+}
+
+// Wraps `t` into a looping track's own [first keyframe time -> last keyframe time) span
+// once playback passes its start - the track then repeats indefinitely from there.
+function wrapTrackTime( nodes, t, loop ) {
+	if ( ! loop || nodes.length < 2 ) return t;
+	const start = nodes[ 0 ].time;
+	const end = nodes[ nodes.length - 1 ].time;
+	const span = end - start;
+	if ( span <= 0 || t < start ) return t;
+	return start + ( ( t - start ) % span );
+}
+
+// Wraps elapsed playback time into [0, duration) when the master timeline loops as a
+// whole, instead of clamping/stopping at duration.
+function wrapMasterTime( t, duration, loop ) {
+	if ( ! loop || duration <= 0 ) return t;
+	return t % duration;
 }
 
 function isVector( v ) { return !! v && typeof v === 'object' && 'x' in v; }
@@ -368,6 +394,8 @@ export {
 	getRelativeOp,
 	combineWithBase,
 	invertFromBase,
+	wrapTrackTime,
+	wrapMasterTime,
 	readPropertyValue,
 	applyPropertyValue,
 	getAnimatablePropertiesForObject,

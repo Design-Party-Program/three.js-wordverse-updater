@@ -1,4 +1,4 @@
-import { UIPanel, UIText, UIButton, UINumber, UIRow, UISelect, UIInput } from './libs/ui.js';
+import { UIPanel, UIText, UIButton, UINumber, UIRow, UISelect, UIInput, UICheckbox } from './libs/ui.js';
 import {
 	parseTimeline,
 	createNode,
@@ -8,6 +8,8 @@ import {
 	getRelativeOp,
 	combineWithBase,
 	invertFromBase,
+	wrapTrackTime,
+	wrapMasterTime,
 	readPropertyValue,
 	applyPropertyValue,
 	getAnimatablePropertiesForObject,
@@ -127,24 +129,81 @@ function Animation( editor ) {
 	} );
 	sceneTimelineHeaderRow.add( new UIText( 'Duration' ).setWidth( '50px' ) );
 	sceneTimelineHeaderRow.add( sceneTimelineDuration );
+
+	// Master playback flags consumed by the r3f player (ignored by the editor's own
+	// preview, except Loop, which the Play button also honors for WYSIWYG parity).
+	const sceneAutoplayCheckbox = new UICheckbox( false ).onChange( function () {
+
+		getTimelineData().autoplay = sceneAutoplayCheckbox.getValue();
+		signals.sceneTimelineChanged.dispatch();
+
+	} );
+	sceneTimelineHeaderRow.add( sceneAutoplayCheckbox );
+	sceneTimelineHeaderRow.add( new UIText( 'Autoplay' ).setFontSize( '10px' ) );
+
+	const sceneLoopCheckbox = new UICheckbox( false ).onChange( function () {
+
+		getTimelineData().loop = sceneLoopCheckbox.getValue();
+		signals.sceneTimelineChanged.dispatch();
+
+	} );
+	sceneTimelineHeaderRow.add( sceneLoopCheckbox );
+	sceneTimelineHeaderRow.add( new UIText( 'Loop' ).setFontSize( '10px' ) );
+
 	sceneTimelineSection.add( sceneTimelineHeaderRow );
 
 
-	// Scrub area, draggable to seek. Uses a neutral mid-grey so it stays visible in
-	// both the light and dark editor themes (a black-tinted rgba disappears against
-	// the dark theme's near-black background).
-	const sceneTimelineArea = document.createElement( 'div' );
-	sceneTimelineArea.style.cssText = 'position:relative;height:20px;margin:4px 10px;' +
-		'background:rgba(128,128,128,0.25);border:1px solid rgba(128,128,128,0.4);cursor:pointer;';
-	sceneTimelineSection.dom.appendChild( sceneTimelineArea );
+	// Body wrapper: hosts the ruler (dedicated scrub-handle layer, always on top) and the
+	// track list, sharing one coordinate space so the playhead line spans both and the
+	// label gutter lines up between the ruler and every row below it.
+	const sceneTimelineBody = document.createElement( 'div' );
+	sceneTimelineBody.style.cssText = 'position:relative;margin:4px 10px;';
+	sceneTimelineSection.dom.appendChild( sceneTimelineBody );
 
+	let labelGutterWidth = 120;
+
+	// Ruler: the one dedicated layer for grabbing/dragging the playhead, always drawn
+	// above the track rows below it.
+	const sceneTimelineRuler = document.createElement( 'div' );
+	sceneTimelineRuler.style.cssText = 'position:relative;display:flex;height:20px;z-index:3;';
+	sceneTimelineBody.appendChild( sceneTimelineRuler );
+
+	const rulerGutterSpacer = document.createElement( 'div' );
+	rulerGutterSpacer.style.cssText = 'flex-shrink:0;';
+	sceneTimelineRuler.appendChild( rulerGutterSpacer );
+
+	// Uses a neutral mid-grey so it stays visible in both the light and dark editor
+	// themes (a black-tinted rgba disappears against the dark theme's near-black
+	// background).
+	const sceneTimelineRulerTrack = document.createElement( 'div' );
+	sceneTimelineRulerTrack.style.cssText = 'position:relative;flex:1;height:100%;cursor:pointer;' +
+		'background:rgba(128,128,128,0.25);border:1px solid rgba(128,128,128,0.4);';
+	sceneTimelineRuler.appendChild( sceneTimelineRulerTrack );
+
+	// Full-height playhead line, overlaid behind the keyframe diamonds, spanning from the
+	// ruler down through every currently-visible track row.
 	const sceneTimelinePlayhead = document.createElement( 'div' );
-	sceneTimelinePlayhead.style.cssText = 'position:absolute;top:0;bottom:0;width:2px;background:#e91e63;left:0;pointer-events:none;';
-	sceneTimelineArea.appendChild( sceneTimelinePlayhead );
+	sceneTimelinePlayhead.style.cssText = 'position:absolute;top:0;bottom:0;width:2px;background:#e91e63;pointer-events:none;z-index:1;';
+	sceneTimelineBody.appendChild( sceneTimelinePlayhead );
+
+	// Drag handle between the label gutter and the timeline surface - resizes
+	// labelGutterWidth, keeping the ruler and every row's label column in sync.
+	const sceneTimelineGutterHandle = document.createElement( 'div' );
+	sceneTimelineGutterHandle.style.cssText = 'position:absolute;top:0;bottom:0;width:6px;margin-left:-3px;cursor:ew-resize;z-index:4;';
+	sceneTimelineBody.appendChild( sceneTimelineGutterHandle );
 
 	const sceneTimelineTrackList = document.createElement( 'div' );
-	sceneTimelineTrackList.style.cssText = 'margin:0 10px;';
-	sceneTimelineSection.dom.appendChild( sceneTimelineTrackList );
+	sceneTimelineTrackList.style.cssText = 'position:relative;max-height:180px;overflow-y:auto;z-index:2;';
+	sceneTimelineBody.appendChild( sceneTimelineTrackList );
+
+	function layoutSceneTimelineGutter() {
+
+		rulerGutterSpacer.style.width = labelGutterWidth + 'px';
+		sceneTimelineGutterHandle.style.left = labelGutterWidth + 'px';
+
+	}
+
+	layoutSceneTimelineGutter();
 
 	// Add-keyframe controls
 	const sceneTimelineAddRow = new UIRow();
@@ -210,13 +269,15 @@ function Animation( editor ) {
 
 		if ( ! editor.scene.userData.timeline ) {
 
-			editor.scene.userData.timeline = { duration: 10, nodes: [], bases: {} };
+			editor.scene.userData.timeline = { duration: 10, nodes: [], bases: {}, loops: {}, autoplay: false, loop: false };
 
 		}
 
-		if ( ! editor.scene.userData.timeline.bases ) editor.scene.userData.timeline.bases = {};
+		const timeline = editor.scene.userData.timeline;
+		if ( ! timeline.bases ) timeline.bases = {};
+		if ( ! timeline.loops ) timeline.loops = {};
 
-		return editor.scene.userData.timeline;
+		return timeline;
 
 	}
 
@@ -456,10 +517,11 @@ function Animation( editor ) {
 			const uuid = key.substring( 0, separatorIndex );
 			const property = key.substring( separatorIndex + 2 );
 
+			const trackTime = wrapTrackTime( nodes, t, !! timeline.loops[ key ] );
 			const base = timeline.bases[ key ];
 			const value = base
-				? evaluateRelativeTrack( nodes, t, base.value, base.op, property.indexOf( 'rotation' ) === 0 )
-				: evaluateTrack( nodes, t );
+				? evaluateRelativeTrack( nodes, trackTime, base.value, base.op, property.indexOf( 'rotation' ) === 0 )
+				: evaluateTrack( nodes, trackTime );
 			if ( value === undefined ) return;
 
 			const object = editor.objectByUuid( uuid );
@@ -476,9 +538,10 @@ function Animation( editor ) {
 	function updateSceneTimelinePlayheadPosition() {
 
 		const timeline = getTimelineData();
-		const rect = sceneTimelineArea.getBoundingClientRect();
+		const rulerRect = sceneTimelineRulerTrack.getBoundingClientRect();
+		const bodyRect = sceneTimelineBody.getBoundingClientRect();
 		const percent = timeline.duration > 0 ? Math.min( 1, Math.max( 0, sceneTimelineTime / timeline.duration ) ) : 0;
-		sceneTimelinePlayhead.style.left = ( percent * rect.width ) + 'px';
+		sceneTimelinePlayhead.style.left = ( ( rulerRect.left - bodyRect.left ) + percent * rulerRect.width ) + 'px';
 
 	}
 
@@ -490,7 +553,7 @@ function Animation( editor ) {
 	}
 
 	// Advances sceneTimelineTime by real elapsed time each frame until the timeline's
-	// duration is reached (playback stops rather than looping)
+	// duration is reached (playback then loops or stops, per the master Loop flag)
 	function scenePlaybackTick( timestamp ) {
 
 		if ( ! isScenePlaying ) return;
@@ -504,8 +567,16 @@ function Animation( editor ) {
 
 		if ( timeline.duration > 0 && sceneTimelineTime >= timeline.duration ) {
 
-			sceneTimelineTime = timeline.duration;
-			isScenePlaying = false;
+			if ( timeline.loop ) {
+
+				sceneTimelineTime = wrapMasterTime( sceneTimelineTime, timeline.duration, true );
+
+			} else {
+
+				sceneTimelineTime = timeline.duration;
+				isScenePlaying = false;
+
+			}
 
 		}
 
@@ -549,7 +620,7 @@ function Animation( editor ) {
 	function setSceneTimelineTimeFromClientX( clientX ) {
 
 		const timeline = getTimelineData();
-		const rect = sceneTimelineArea.getBoundingClientRect();
+		const rect = sceneTimelineRulerTrack.getBoundingClientRect();
 		const percent = Math.min( 1, Math.max( 0, ( clientX - rect.left ) / rect.width ) );
 		sceneTimelineTime = percent * timeline.duration;
 		updateSceneTimelinePlayheadPosition();
@@ -559,8 +630,9 @@ function Animation( editor ) {
 	}
 
 	let isScrubbingSceneTimeline = false;
+	let isResizingGutter = false;
 
-	sceneTimelineArea.addEventListener( 'mousedown', function ( event ) {
+	sceneTimelineRulerTrack.addEventListener( 'mousedown', function ( event ) {
 
 		isScenePlaying = false; // scrubbing takes over from playback
 		isScrubbingSceneTimeline = true;
@@ -568,7 +640,25 @@ function Animation( editor ) {
 
 	} );
 
+	sceneTimelineGutterHandle.addEventListener( 'mousedown', function ( event ) {
+
+		event.preventDefault();
+		isResizingGutter = true;
+
+	} );
+
 	document.addEventListener( 'mousemove', function ( event ) {
+
+		if ( isResizingGutter ) {
+
+			const bodyRect = sceneTimelineBody.getBoundingClientRect();
+			labelGutterWidth = Math.min( 260, Math.max( 60, event.clientX - bodyRect.left ) );
+			layoutSceneTimelineGutter();
+			renderSceneTimelineTracks();
+			updateSceneTimelinePlayheadPosition();
+			return;
+
+		}
 
 		if ( isScrubbingSceneTimeline ) {
 
@@ -579,7 +669,7 @@ function Animation( editor ) {
 		if ( draggingNodeId && dragOriginTimes ) {
 
 			const timeline = getTimelineData();
-			const rect = sceneTimelineArea.getBoundingClientRect();
+			const rect = sceneTimelineRulerTrack.getBoundingClientRect();
 			const percent = Math.min( 1, Math.max( 0, ( event.clientX - rect.left ) / rect.width ) );
 			const anchorNewTime = percent * timeline.duration;
 			const delta = anchorNewTime - dragAnchorStartTime;
@@ -601,6 +691,7 @@ function Animation( editor ) {
 	document.addEventListener( 'mouseup', function () {
 
 		isScrubbingSceneTimeline = false;
+		isResizingGutter = false;
 
 		if ( draggingNodeId ) {
 
@@ -620,19 +711,21 @@ function Animation( editor ) {
 
 		const timeline = getTimelineData();
 		sceneTimelineDuration.setValue( timeline.duration );
+		sceneAutoplayCheckbox.setValue( !! timeline.autoplay );
+		sceneLoopCheckbox.setValue( !! timeline.loop );
 
 		const tracks = groupTracksByTarget( timeline.nodes );
 
 		// Nest the per-property tracks under one collapsible row per target object, so
 		// multiple timelines affecting the same object are grouped together.
-		const byObject = new Map(); // uuid -> [{ property, nodes }]
+		const byObject = new Map(); // uuid -> [{ property, nodes, key }]
 		tracks.forEach( ( nodes, key ) => {
 
 			const separatorIndex = key.indexOf( '::' );
 			const uuid = key.substring( 0, separatorIndex );
 			const property = key.substring( separatorIndex + 2 );
 			const list = byObject.get( uuid ) || [];
-			list.push( { property, nodes } );
+			list.push( { property, nodes, key } );
 			byObject.set( uuid, list );
 
 		} );
@@ -645,15 +738,19 @@ function Animation( editor ) {
 			const objectRow = document.createElement( 'div' );
 			objectRow.style.cssText = 'display:flex;align-items:center;height:18px;font-size:10px;cursor:pointer;';
 
+			const objectLabelArea = document.createElement( 'div' );
+			objectLabelArea.style.cssText = 'display:flex;align-items:center;flex-shrink:0;width:' + labelGutterWidth + 'px;';
+			objectRow.appendChild( objectLabelArea );
+
 			const disclosure = document.createElement( 'span' );
 			disclosure.textContent = isCollapsed ? '▶' : '▼';
 			disclosure.style.cssText = 'width:12px;flex-shrink:0;color:#aaa;';
-			objectRow.appendChild( disclosure );
+			objectLabelArea.appendChild( disclosure );
 
 			const objectLabel = document.createElement( 'div' );
 			objectLabel.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ccc;font-weight:bold;';
 			objectLabel.textContent = ( object ? ( object.name || 'Object' ) : uuid.substring( 0, 8 ) ) + ' (' + properties.length + ')';
-			objectRow.appendChild( objectLabel );
+			objectLabelArea.appendChild( objectLabel );
 
 			objectRow.addEventListener( 'click', function () {
 
@@ -675,15 +772,33 @@ function Animation( editor ) {
 
 			if ( isCollapsed ) return;
 
-			properties.forEach( ( { property, nodes } ) => {
+			properties.forEach( ( { property, nodes, key } ) => {
 
 				const trackRow = document.createElement( 'div' );
-				trackRow.style.cssText = 'display:flex;align-items:center;height:18px;font-size:10px;padding-left:12px;';
+				trackRow.style.cssText = 'display:flex;align-items:center;height:18px;font-size:10px;';
+
+				const trackLabelArea = document.createElement( 'div' );
+				trackLabelArea.style.cssText = 'display:flex;align-items:center;gap:3px;flex-shrink:0;' +
+					'width:' + labelGutterWidth + 'px;padding-left:12px;';
+				trackRow.appendChild( trackLabelArea );
 
 				const trackLabel = document.createElement( 'div' );
-				trackLabel.style.cssText = 'width:108px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#aaa;';
+				trackLabel.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#aaa;';
 				trackLabel.textContent = property;
-				trackRow.appendChild( trackLabel );
+				trackLabelArea.appendChild( trackLabel );
+
+				const loopToggle = document.createElement( 'input' );
+				loopToggle.type = 'checkbox';
+				loopToggle.title = 'Loop this track';
+				loopToggle.checked = !! timeline.loops[ key ];
+				loopToggle.style.cssText = 'flex-shrink:0;width:11px;height:11px;margin:0;';
+				loopToggle.addEventListener( 'change', function () {
+
+					timeline.loops[ key ] = loopToggle.checked;
+					signals.sceneTimelineChanged.dispatch();
+
+				} );
+				trackLabelArea.appendChild( loopToggle );
 
 				const trackTimeline = document.createElement( 'div' );
 				trackTimeline.style.cssText = 'position:relative;flex:1;height:100%;background:rgba(0,0,0,0.02);';
@@ -749,11 +864,12 @@ function Animation( editor ) {
 	function loadSceneTimeline() {
 
 		// Normalize whatever is currently on userData (freshly loaded from ACF JSON,
-		// or absent for a brand-new scene) into the {duration, nodes, bases} shape.
+		// or absent for a brand-new scene) into the {duration, nodes, bases, loops,
+		// autoplay, loop} shape.
 		const existing = editor.scene.userData.timeline;
 		editor.scene.userData.timeline = ( existing && Array.isArray( existing.nodes ) )
 			? existing
-			: { duration: 10, nodes: [], bases: {} };
+			: { duration: 10, nodes: [], bases: {}, loops: {}, autoplay: false, loop: false };
 
 		isScenePlaying = false;
 		sceneTimelineTime = 0;
