@@ -97,6 +97,7 @@
       import { SetPositionCommand } from './js/commands/SetPositionCommand.js';
       import { SetRotationCommand } from './js/commands/SetRotationCommand.js';
       import { SetScaleCommand } from './js/commands/SetScaleCommand.js';
+      import { parseTimeline } from './js/SceneTimeline.js';
 
 
 			window.URL = window.URL || window.webkitURL;
@@ -194,6 +195,12 @@
         editor.scene.name = vrSceneData.title.rendered;
         editor.scene.background = new THREE.Color(vrSceneData.acf.skycolor);
         editor.scene.userData = {...editor.scene.userData, wpData:vrSceneData};
+
+        // Scene Timeline (Animation.js "Scene Timeline" section) - falls back to the
+        // existing cutscene_duration field (or 10s) when no timeline has been authored yet
+        editor.scene.userData.timeline = parseTimeline( vrSceneData.acf.timeline ) ||
+          { duration: Number( vrSceneData.acf.cutscene_duration ) || 10, nodes: [] };
+        editor.signals.sceneTimelineChanged.dispatch();
 
         // Ctrl+G group containers must exist before any member below reparents into them
         vrSceneData.acf.groups && vrSceneData.acf.groups.map(groupProps => {

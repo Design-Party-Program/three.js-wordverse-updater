@@ -233,7 +233,11 @@ function MenubarSaveButtons( editor ) {
               lights: lights,
               groups: groups,
               cameras: cameras,
-              skycolor: `#${editor.scene.background.getHexString()}`
+              skycolor: `#${editor.scene.background.getHexString()}`,
+              // Scene Timeline (Animation.js "Scene Timeline" section); cutscene_duration
+              // stays the single source of truth for the timeline's total duration
+              timeline: JSON.stringify( editor.scene.userData.timeline || { duration: 10, nodes: [] } ),
+              cutscene_duration: ( editor.scene.userData.timeline && editor.scene.userData.timeline.duration ) || 10,
             }
           }),
         }

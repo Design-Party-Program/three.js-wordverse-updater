@@ -107,6 +107,11 @@ function Editor() {
 		animationPanelChanged: new Signal(),
 		animationPanelResized: new Signal(),
 
+		// WordVerse scene timeline (Animation.js "Scene Timeline" track list) - dispatched
+		// whenever nodes are added/edited/removed/loaded, so the panel can refresh its UI
+		// and the viewport can re-apply the scrub preview
+		sceneTimelineChanged: new Signal(),
+
 		morphTargetsUpdated: new Signal()
 
 	};

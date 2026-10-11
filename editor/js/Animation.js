@@ -1,6 +1,15 @@
-import { UIPanel, UIText, UIButton, UINumber } from './libs/ui.js';
+import { UIPanel, UIText, UIButton, UINumber, UIRow, UISelect, UIInput } from './libs/ui.js';
 
 import { AnimationPathHelper } from 'three/addons/helpers/AnimationPathHelper.js';
+import {
+	parseTimeline,
+	createNode,
+	groupTracksByTarget,
+	evaluateTrack,
+	readPropertyValue,
+	applyPropertyValue,
+	getAnimatablePropertiesForObject,
+} from './SceneTimeline.js';
 
 function Animation( editor ) {
 
@@ -581,6 +590,379 @@ function Animation( editor ) {
 	signals.editorCleared.add( clear );
 	signals.objectAdded.add( update );
 	signals.objectRemoved.add( update );
+
+	// ─── WordVerse Scene Timeline ───────────────────────────────────────────────
+	// Unlike the GLTF-clip scrubber above (read-only playback of baked-in
+	// AnimationClips), this section authors arbitrary scene-object property
+	// keyframes ("tweened" or "hard set"), persisted to ACF and played back by
+	// the r3f player. See SceneTimeline.js for the shared data model/engine.
+
+	const sceneTimelineSection = new UIPanel();
+	sceneTimelineSection.dom.style.cssText = 'border-top:1px solid #555;padding-top:6px;flex-shrink:0;';
+	container.add( sceneTimelineSection );
+
+	const sceneTimelineHeaderRow = new UIRow();
+	sceneTimelineHeaderRow.add( new UIText( 'Scene Timeline' ).setClass( 'Label' ).setFontSize( '11px' ) );
+	const sceneTimelineDuration = new UINumber( 10 ).setWidth( '50px' ).setRange( 0.1, 3600 ).onChange( function () {
+
+		getTimelineData().duration = sceneTimelineDuration.getValue();
+		signals.sceneTimelineChanged.dispatch();
+
+	} );
+	sceneTimelineHeaderRow.add( new UIText( 'Duration' ).setWidth( '50px' ) );
+	sceneTimelineHeaderRow.add( sceneTimelineDuration );
+	sceneTimelineSection.add( sceneTimelineHeaderRow );
+
+	// Scrub area (own playhead, independent of the GLTF-clip mixer above)
+	const sceneTimelineArea = document.createElement( 'div' );
+	sceneTimelineArea.style.cssText = 'position:relative;height:16px;margin:4px 10px;background:rgba(0,0,0,0.05);cursor:pointer;';
+	sceneTimelineSection.dom.appendChild( sceneTimelineArea );
+
+	const sceneTimelinePlayhead = document.createElement( 'div' );
+	sceneTimelinePlayhead.style.cssText = 'position:absolute;top:0;bottom:0;width:2px;background:#e91e63;left:0;pointer-events:none;';
+	sceneTimelineArea.appendChild( sceneTimelinePlayhead );
+
+	const sceneTimelineTrackList = document.createElement( 'div' );
+	sceneTimelineTrackList.style.cssText = 'margin:0 10px;';
+	sceneTimelineSection.dom.appendChild( sceneTimelineTrackList );
+
+	// Add-keyframe controls
+	const sceneTimelineAddRow = new UIRow();
+	const scenePropertySelect = new UISelect().setWidth( '110px' );
+	const sceneModeSelect = new UISelect().setWidth( '60px' ).setOptions( { set: 'Set', tween: 'Tween' } );
+	const sceneEasingSelect = new UISelect().setWidth( '90px' ).setOptions( {
+		linear: 'Linear', easeInQuad: 'Ease In', easeOutQuad: 'Ease Out', easeInOutQuad: 'Ease In/Out'
+	} );
+	sceneEasingSelect.dom.style.display = 'none';
+	sceneModeSelect.onChange( function () {
+
+		sceneEasingSelect.dom.style.display = sceneModeSelect.getValue() === 'tween' ? '' : 'none';
+
+	} );
+	const sceneAddKeyframeButton = new UIButton( 'Add at Playhead' ).onClick( addKeyframeAtPlayhead );
+
+	sceneTimelineAddRow.add( new UIText( 'Property' ).setWidth( '50px' ) );
+	sceneTimelineAddRow.add( scenePropertySelect );
+	sceneTimelineAddRow.add( sceneModeSelect );
+	sceneTimelineAddRow.add( sceneEasingSelect );
+	sceneTimelineAddRow.add( sceneAddKeyframeButton );
+	sceneTimelineSection.add( sceneTimelineAddRow );
+
+	// Selected-keyframe editor
+	const sceneTimelineEditRow = new UIRow();
+	sceneTimelineEditRow.dom.style.display = 'none';
+	const sceneEditValueInput = new UIInput( '' ).setWidth( '110px' );
+	const sceneEditApplyButton = new UIButton( 'Apply' ).onClick( applySelectedNodeEdit );
+	const sceneEditDeleteButton = new UIButton( '✕' ).onClick( deleteSelectedNode );
+	sceneEditDeleteButton.dom.title = 'Delete keyframe';
+	sceneTimelineEditRow.add( new UIText( 'Value' ).setWidth( '50px' ) );
+	sceneTimelineEditRow.add( sceneEditValueInput );
+	sceneTimelineEditRow.add( sceneEditApplyButton );
+	sceneTimelineEditRow.add( sceneEditDeleteButton );
+	sceneTimelineSection.add( sceneTimelineEditRow );
+
+	let sceneTimelineTime = 0;
+	let selectedNodeId = null;
+	let draggingNodeId = null;
+
+	// The timeline is authored on editor.scene.userData so it travels with Save/Load +
+	// MQTT sceneLiveUpdate the same way wpData/groups/cameras already do.
+	function getTimelineData() {
+
+		if ( ! editor.scene.userData.timeline ) {
+
+			editor.scene.userData.timeline = { duration: 10, nodes: [] };
+
+		}
+
+		return editor.scene.userData.timeline;
+
+	}
+
+	function refreshScenePropertyOptions() {
+
+		const object = editor.selected;
+		if ( ! object ) {
+
+			scenePropertySelect.setOptions( {} );
+			sceneAddKeyframeButton.dom.disabled = true;
+			return;
+
+		}
+
+		sceneAddKeyframeButton.dom.disabled = false;
+		const props = getAnimatablePropertiesForObject( object );
+		const options = {};
+		props.forEach( ( p ) => { options[ p ] = p; } );
+		scenePropertySelect.setOptions( options );
+
+	}
+
+	function addKeyframeAtPlayhead() {
+
+		const object = editor.selected;
+		if ( ! object ) return;
+
+		const property = scenePropertySelect.getValue();
+		if ( ! property ) return;
+
+		const value = readPropertyValue( object, property );
+		if ( value === undefined ) return;
+
+		const timeline = getTimelineData();
+		const node = createNode( {
+			targetUuid: object.uuid,
+			property,
+			time: sceneTimelineTime,
+			mode: sceneModeSelect.getValue(),
+			value,
+			easing: sceneEasingSelect.getValue(),
+		} );
+
+		// Replace an existing node for this exact target+property+time, if any
+		const existingIndex = timeline.nodes.findIndex( ( n ) =>
+			n.target_uuid === node.target_uuid && n.property === node.property && n.time === node.time );
+		if ( existingIndex !== - 1 ) {
+
+			timeline.nodes.splice( existingIndex, 1, node );
+
+		} else {
+
+			timeline.nodes.push( node );
+
+		}
+
+		signals.sceneTimelineChanged.dispatch();
+
+	}
+
+	function findNode( nodeId ) {
+
+		return getTimelineData().nodes.find( ( n ) => n.id === nodeId );
+
+	}
+
+	function selectNode( nodeId ) {
+
+		selectedNodeId = nodeId;
+		const node = findNode( nodeId );
+
+		if ( ! node ) {
+
+			sceneTimelineEditRow.dom.style.display = 'none';
+			return;
+
+		}
+
+		sceneTimelineEditRow.dom.style.display = '';
+		sceneEditValueInput.setValue( JSON.stringify( node.value ) );
+
+	}
+
+	function applySelectedNodeEdit() {
+
+		const node = findNode( selectedNodeId );
+		if ( ! node ) return;
+
+		try {
+
+			node.value = JSON.parse( sceneEditValueInput.getValue() );
+
+		} catch ( err ) {
+
+			console.warn( 'Invalid keyframe value JSON:', err );
+			return;
+
+		}
+
+		signals.sceneTimelineChanged.dispatch();
+
+	}
+
+	function deleteSelectedNode() {
+
+		const timeline = getTimelineData();
+		const index = timeline.nodes.findIndex( ( n ) => n.id === selectedNodeId );
+		if ( index === - 1 ) return;
+
+		timeline.nodes.splice( index, 1 );
+		selectedNodeId = null;
+		sceneTimelineEditRow.dom.style.display = 'none';
+		signals.sceneTimelineChanged.dispatch();
+
+	}
+
+	// Evaluates every track at `t` and applies it live to the viewport (scrub preview)
+	function applySceneTimelinePreview( t ) {
+
+		const timeline = getTimelineData();
+		const tracks = groupTracksByTarget( timeline.nodes );
+
+		tracks.forEach( ( nodes, key ) => {
+
+			const separatorIndex = key.indexOf( '::' );
+			const uuid = key.substring( 0, separatorIndex );
+			const property = key.substring( separatorIndex + 2 );
+			const value = evaluateTrack( nodes, t );
+			if ( value === undefined ) return;
+
+			const object = editor.objectByUuid( uuid );
+			if ( ! object ) return;
+
+			applyPropertyValue( object, property, value );
+
+		} );
+
+		signals.sceneGraphChanged.dispatch();
+
+	}
+
+	function updateSceneTimelinePlayheadPosition() {
+
+		const timeline = getTimelineData();
+		const rect = sceneTimelineArea.getBoundingClientRect();
+		const percent = timeline.duration > 0 ? Math.min( 1, Math.max( 0, sceneTimelineTime / timeline.duration ) ) : 0;
+		sceneTimelinePlayhead.style.left = ( percent * rect.width ) + 'px';
+
+	}
+
+	function setSceneTimelineTimeFromClientX( clientX ) {
+
+		const timeline = getTimelineData();
+		const rect = sceneTimelineArea.getBoundingClientRect();
+		const percent = Math.min( 1, Math.max( 0, ( clientX - rect.left ) / rect.width ) );
+		sceneTimelineTime = percent * timeline.duration;
+		updateSceneTimelinePlayheadPosition();
+		applySceneTimelinePreview( sceneTimelineTime );
+
+	}
+
+	let isScrubbingSceneTimeline = false;
+
+	sceneTimelineArea.addEventListener( 'mousedown', function ( event ) {
+
+		isScrubbingSceneTimeline = true;
+		setSceneTimelineTimeFromClientX( event.clientX );
+
+	} );
+
+	document.addEventListener( 'mousemove', function ( event ) {
+
+		if ( isScrubbingSceneTimeline ) {
+
+			setSceneTimelineTimeFromClientX( event.clientX );
+
+		}
+
+		if ( draggingNodeId ) {
+
+			const node = findNode( draggingNodeId );
+			if ( node ) {
+
+				const timeline = getTimelineData();
+				const rect = sceneTimelineArea.getBoundingClientRect();
+				const percent = Math.min( 1, Math.max( 0, ( event.clientX - rect.left ) / rect.width ) );
+				node.time = percent * timeline.duration;
+				renderSceneTimelineTracks();
+
+			}
+
+		}
+
+	} );
+
+	document.addEventListener( 'mouseup', function () {
+
+		isScrubbingSceneTimeline = false;
+
+		if ( draggingNodeId ) {
+
+			draggingNodeId = null;
+			signals.sceneTimelineChanged.dispatch();
+
+		}
+
+	} );
+
+	function renderSceneTimelineTracks() {
+
+		sceneTimelineTrackList.innerHTML = '';
+
+		const timeline = getTimelineData();
+		sceneTimelineDuration.setValue( timeline.duration );
+
+		const tracks = groupTracksByTarget( timeline.nodes );
+
+		tracks.forEach( ( nodes, key ) => {
+
+			const separatorIndex = key.indexOf( '::' );
+			const uuid = key.substring( 0, separatorIndex );
+			const property = key.substring( separatorIndex + 2 );
+			const object = editor.objectByUuid( uuid );
+
+			const trackRow = document.createElement( 'div' );
+			trackRow.style.cssText = 'display:flex;align-items:center;height:18px;font-size:10px;';
+
+			const trackLabel = document.createElement( 'div' );
+			trackLabel.style.cssText = 'width:120px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#aaa;';
+			trackLabel.textContent = ( object ? ( object.name || 'Object' ) : uuid.substring( 0, 8 ) ) + ' · ' + property;
+			trackRow.appendChild( trackLabel );
+
+			const trackTimeline = document.createElement( 'div' );
+			trackTimeline.style.cssText = 'position:relative;flex:1;height:100%;background:rgba(0,0,0,0.02);';
+
+			nodes.forEach( ( node ) => {
+
+				const diamond = document.createElement( 'div' );
+				const isSelected = node.id === selectedNodeId;
+				const left = timeline.duration > 0 ? ( node.time / timeline.duration ) * 100 : 0;
+				diamond.style.cssText = 'position:absolute;top:50%;width:8px;height:8px;' +
+					'background:' + ( node.mode === 'tween' ? '#2196F3' : '#FF9800' ) + ';' +
+					'border:1px solid ' + ( isSelected ? '#fff' : 'rgba(0,0,0,0.3)' ) + ';' +
+					'transform:translate(-50%,-50%) rotate(45deg);cursor:ew-resize;left:' + left + '%;';
+				diamond.title = property + ' @ ' + node.time.toFixed( 2 ) + 's (' + node.mode + ')';
+
+				diamond.addEventListener( 'mousedown', function ( event ) {
+
+					event.stopPropagation();
+					draggingNodeId = node.id;
+					selectNode( node.id );
+					renderSceneTimelineTracks();
+
+				} );
+
+				trackTimeline.appendChild( diamond );
+
+			} );
+
+			trackRow.appendChild( trackTimeline );
+			sceneTimelineTrackList.appendChild( trackRow );
+
+		} );
+
+	}
+
+	function loadSceneTimeline() {
+
+		// Normalize whatever is currently on userData (freshly loaded from ACF JSON,
+		// or absent for a brand-new scene) into the {duration, nodes} shape.
+		const existing = editor.scene.userData.timeline;
+		editor.scene.userData.timeline = ( existing && Array.isArray( existing.nodes ) )
+			? existing
+			: { duration: 10, nodes: [] };
+
+		selectedNodeId = null;
+		sceneTimelineEditRow.dom.style.display = 'none';
+		renderSceneTimelineTracks();
+		updateSceneTimelinePlayheadPosition();
+
+	}
+
+	signals.sceneTimelineChanged.add( renderSceneTimelineTracks );
+	signals.objectSelected.add( refreshScenePropertyOptions );
+	signals.editorCleared.add( loadSceneTimeline );
+
+	loadSceneTimeline();
 
 	// Show panel on initial load
 	container.setDisplay( 'flex' );
