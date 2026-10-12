@@ -16,9 +16,13 @@ function uuidv4() {
 }
 
 // ACF reports an empty textarea as "" or false depending on context - normalize both
-// to "no graph" rather than letting JSON.parse throw or silently produce garbage.
+// to "no graph" rather than letting JSON.parse throw or silently produce garbage. Also
+// skips anything that isn't even object-shaped (e.g. a stray placeholder value returned
+// before the rete_graph ACF field has been re-imported on this site) without logging -
+// a real serialized graph always starts with "{".
 function parseReteGraph( raw ) {
 	if ( ! raw || typeof raw !== 'string' ) return null;
+	if ( raw.trim().charAt( 0 ) !== '{' ) return null;
 	try {
 		const parsed = JSON.parse( raw );
 		if ( ! parsed || ! Array.isArray( parsed.nodes ) || ! Array.isArray( parsed.connections ) ) return null;

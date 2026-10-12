@@ -3,15 +3,15 @@
 // see ReteGraphRenderer.js for the hand-written vanilla-DOM node/connection renderer)
 // and highlights nodes that target the currently selected object.
 //
-// Persistence: the graph lives at `editor.scene.userData.reteGraph` (same pattern as
-// Scene Timeline's `userData.timeline`) - Menubar.Save.buttons.js/index.html/
-// MqttConnector.js read/write it as a JSON string in the `rete_graph` ACF field.
+// Persistence: the graph lives at `editor.scene.userData.reteGraph` as a PLAIN OBJECT
+// ({version,nodes,connections}) - same convention as Scene Timeline's `userData.timeline`.
+// Only Menubar.Save.buttons.js (object -> JSON string, for the `rete_graph` ACF field)
+// and index.html (JSON string -> object, via parseReteGraph) ever convert between the
+// two forms; MqttConnector.js/SceneToJson.js pass the plain object as-is over MQTT.
 
 import { UIDiv, UIButton, UIText } from './libs/ui.js';
 import { NodeEditor, AreaPlugin, AreaExtensions, ConnectionPlugin, ConnectionPresets } from './libs/rete/rete-bundle.js';
 import {
-	parseReteGraph,
-	serializeReteGraph,
 	createReteNode,
 	evaluateGraph,
 	NODE_TYPES,
@@ -193,8 +193,10 @@ function ReteGraphWindow( editor ) {
 		await nodeEditor.clear();
 		graphNodesById.clear();
 
-		const raw = editor.scene.userData.reteGraph;
-		const graph = parseReteGraph( raw ) || { version: 1, nodes: [], connections: [] };
+		const stored = editor.scene.userData.reteGraph;
+		const graph = ( stored && Array.isArray( stored.nodes ) && Array.isArray( stored.connections ) )
+			? stored
+			: { version: 1, nodes: [], connections: [] };
 
 		for ( const graphNode of graph.nodes ) {
 			graphNodesById.set( graphNode.id, graphNode );
@@ -217,7 +219,7 @@ function ReteGraphWindow( editor ) {
 		const connections = nodeEditor.getConnections().map( ( c ) => ( {
 			id: c.id, source: c.source, sourceOutput: c.sourceOutput, target: c.target, targetInput: c.targetInput,
 		} ) );
-		editor.scene.userData.reteGraph = serializeReteGraph( { nodes, connections } );
+		editor.scene.userData.reteGraph = { version: 1, nodes, connections };
 		signals.reteGraphChanged.dispatch();
 	}
 
