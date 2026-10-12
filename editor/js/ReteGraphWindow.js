@@ -155,7 +155,9 @@ function ReteGraphWindow( editor ) {
 			return context;
 		} );
 
-		loadGraph();
+		// loadGraph() is NOT called here - this.open() always calls it exactly once per
+		// open (including the first), so calling it here too would race two concurrent
+		// loadGraph() runs against the same nodeEditor/graphNodesById and double-add nodes.
 	}
 
 	// ─── Graph <-> live rete.js NodeEditor sync ─────────────────────────────────────
