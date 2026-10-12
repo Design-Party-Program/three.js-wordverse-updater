@@ -215,11 +215,22 @@ function ReteGraphWindow( editor ) {
 		// above has flushed before we touch connections.
 		await new Promise( ( resolve ) => requestAnimationFrame( resolve ) );
 
+		const loadedConnectionIds = [];
 		for ( const c of graph.connections ) {
 			// Guard against a persisted connection whose endpoint node failed to load.
 			if ( ! graphNodesById.has( c.source ) || ! graphNodesById.has( c.target ) ) continue;
 			await nodeEditor.addConnection( c );
+			loadedConnectionIds.push( c.id );
 		}
+
+		// On reopen, nodeEditor.clear()'s teardown (noderemoved/connectionremoved ->
+		// unmount) adds extra pending microtasks on top of the add-phase ones the rAF
+		// wait above already accounts for, so sockets can still lag behind the very
+		// first connection render pass here. area.update() replays the connection's
+		// render event from scratch, re-resolving sourceEl/targetEl against whatever is
+		// currently in ReteGraphRenderer's socketElements map - safe/cheap to always do.
+		await new Promise( ( resolve ) => requestAnimationFrame( resolve ) );
+		for ( const id of loadedConnectionIds ) await area.update( 'connection', id );
 	}
 
 	function persist() {
