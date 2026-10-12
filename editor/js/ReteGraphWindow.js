@@ -199,6 +199,7 @@ function ReteGraphWindow( editor ) {
 		const graph = ( stored && Array.isArray( stored.nodes ) && Array.isArray( stored.connections ) )
 			? stored
 			: { version: 1, nodes: [], connections: [] };
+		console.log( 'Rete: loadGraph() reading from userData.reteGraph', stored );
 
 		for ( const graphNode of graph.nodes ) {
 			graphNodesById.set( graphNode.id, graphNode );
@@ -218,10 +219,25 @@ function ReteGraphWindow( editor ) {
 		const loadedConnectionIds = [];
 		for ( const c of graph.connections ) {
 			// Guard against a persisted connection whose endpoint node failed to load.
-			if ( ! graphNodesById.has( c.source ) || ! graphNodesById.has( c.target ) ) continue;
-			await nodeEditor.addConnection( c );
-			loadedConnectionIds.push( c.id );
+			if ( ! graphNodesById.has( c.source ) || ! graphNodesById.has( c.target ) ) {
+				console.warn( 'Rete: connection skipped at load, endpoint node not found', {
+					connection: c, knownNodeIds: Array.from( graphNodesById.keys() ),
+				} );
+				continue;
+			}
+			try {
+				await nodeEditor.addConnection( c );
+				loadedConnectionIds.push( c.id );
+			} catch ( err ) {
+				console.warn( 'Rete: nodeEditor.addConnection() threw while loading', { connection: c, err } );
+			}
 		}
+
+		console.log( 'Rete: loadGraph() summary', {
+			storedNodeCount: graph.nodes.length, storedConnectionCount: graph.connections.length,
+			loadedConnectionCount: loadedConnectionIds.length,
+			liveConnectionCount: nodeEditor.getConnections().length,
+		} );
 
 		// On reopen, nodeEditor.clear()'s teardown (noderemoved/connectionremoved ->
 		// unmount) adds extra pending microtasks on top of the add-phase ones the rAF
