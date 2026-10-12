@@ -112,6 +112,11 @@ function Editor() {
 		// and the viewport can re-apply the scrub preview
 		sceneTimelineChanged: new Signal(),
 
+		// WordVerse Rete Interactions graph (ReteGraphWindow.js) - dispatched whenever the
+		// graph is edited/loaded, so the Save walk knows to persist it and the live-preview
+		// loop picks up the latest nodes/connections.
+		reteGraphChanged: new Signal(),
+
 		morphTargetsUpdated: new Signal()
 
 	};

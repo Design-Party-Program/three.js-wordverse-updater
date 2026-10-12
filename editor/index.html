@@ -98,6 +98,7 @@
       import { SetRotationCommand } from './js/commands/SetRotationCommand.js';
       import { SetScaleCommand } from './js/commands/SetScaleCommand.js';
       import { parseTimeline } from './js/SceneTimeline.js';
+      import { parseReteGraph } from './js/ReteGraph.js';
 
 
 			window.URL = window.URL || window.webkitURL;
@@ -201,6 +202,11 @@
         editor.scene.userData.timeline = parseTimeline( vrSceneData.acf.timeline ) ||
           { duration: Number( vrSceneData.acf.cutscene_duration ) || 10, nodes: [], bases: {} };
         editor.signals.sceneTimelineChanged.dispatch();
+
+        // Rete Interactions graph (ReteGraphWindow.js)
+        editor.scene.userData.reteGraph = parseReteGraph( vrSceneData.acf.rete_graph ) ||
+          { version: 1, nodes: [], connections: [] };
+        editor.signals.reteGraphChanged.dispatch();
 
         // Ctrl+G group containers must exist before any member below reparents into them
         vrSceneData.acf.groups && vrSceneData.acf.groups.map(groupProps => {

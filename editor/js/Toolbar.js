@@ -3,6 +3,7 @@ import { ToolbarButton } from './ToolbarButton.js';
 import { ToolbarPrimitives } from './Toolbar.Primitives.js';
 import { ToolbarLights } from './Toolbar.Lights.js';
 import { ToolbarCameras } from './Toolbar.Cameras.js';
+import { ToolbarRete } from './Toolbar.Rete.js';
 import { AddObjectCommand } from './commands/AddObjectCommand.js';
 
 function Toolbar( editor ) {
@@ -22,6 +23,9 @@ function Toolbar( editor ) {
 
   // Cameras ToolbarButton
   container.add(new ToolbarCameras(editor));
+
+  // Rete Interactions ToolbarButton - opens the node-graph window for the selected object
+  container.add(new ToolbarRete(editor));
 
   // add a seperator rule
 	container.add( new UIHorizontalRule() );

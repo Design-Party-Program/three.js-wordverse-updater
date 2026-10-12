@@ -238,6 +238,9 @@ function MenubarSaveButtons( editor ) {
               // stays the single source of truth for the timeline's total duration
               timeline: JSON.stringify( editor.scene.userData.timeline || { duration: 10, nodes: [], bases: {} } ),
               cutscene_duration: ( editor.scene.userData.timeline && editor.scene.userData.timeline.duration ) || 10,
+              // Rete Interactions graph (ReteGraphWindow.js) - scene-wide node graph driving
+              // mutable object properties, see ReteGraph.js for the shape/evaluator
+              rete_graph: JSON.stringify( editor.scene.userData.reteGraph || { version: 1, nodes: [], connections: [] } ),
             }
           }),
         }

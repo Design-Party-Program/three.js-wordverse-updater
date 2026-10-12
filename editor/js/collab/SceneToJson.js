@@ -163,6 +163,7 @@
       return {
         vrModels, lights, primitives, wpElements, groups, cameras,
         timeline: editor.scene.userData.timeline || { duration: 10, nodes: [], bases: {} },
+        reteGraph: editor.scene.userData.reteGraph || { version: 1, nodes: [], connections: [] },
       }
     }
 

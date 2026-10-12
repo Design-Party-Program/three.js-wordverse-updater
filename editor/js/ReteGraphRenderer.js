@@ -1,0 +1,283 @@
+// Hand-written vanilla-DOM "render plugin" for rete.js v2's AreaPlugin/ConnectionPlugin.
+//
+// rete.js v2 only ships official render adapters for React/Vue/Angular/Svelte/Lit - none
+// for plain DOM (confirmed against the retejs.org docs + the area-plugin/connection-plugin
+// source). This editor has no build step and uses no UI framework (see Animation.js's
+// hand-rolled Scene Timeline for the existing precedent of custom DOM-only authoring UI
+// in this codebase), so rather than pull in a framework for one modal, this file
+// replicates the ~150-line contract every official render plugin fulfills:
+//
+//   area.addPipe(context => {
+//     if (context.type === 'render') {
+//       // context.data.type is 'node' | 'connection' | 'socket'
+//       // context.data.element is an empty container AreaPlugin/ConnectionPlugin
+//       // already created and positioned/wired for drag+zoom+pick - we just need to
+//       // fill it with content and (for sockets) tell ConnectionPlugin about it.
+//     }
+//   })
+//
+// See https://github.com/retejs/area-plugin (src/index.ts addNodeView/addConnectionView)
+// and https://github.com/retejs/connection-plugin (src/index.ts render/socket handling).
+
+import { NODE_TYPES } from './ReteGraph.js';
+
+function el( tag, className, text ) {
+	const node = document.createElement( tag );
+	if ( className ) node.className = className;
+	if ( text !== undefined ) node.textContent = text;
+	return node;
+}
+
+// Renders one node's body into the (already-positioned) container AreaPlugin gives us.
+// `hooks` lets the owning window (ReteGraphWindow.js) supply live scene data without this
+// module needing to import Editor.js / three.js itself.
+function renderNodeBody( container, node, area, hooks ) {
+
+	container.innerHTML = '';
+	container.classList.add( 'rete-node' );
+	container.classList.toggle( 'rete-node-selected', !! node.selected );
+	container.classList.toggle( 'rete-node-highlighted', hooks.isHighlighted( node ) );
+
+	const typeDef = NODE_TYPES[ node.type ];
+	if ( ! typeDef ) {
+		container.appendChild( el( 'div', 'rete-node-header', node.type + ' (unknown)' ) );
+		return;
+	}
+
+	const header = el( 'div', 'rete-node-header', typeDef.label );
+	const removeBtn = el( 'span', 'rete-node-remove', '\u00d7' );
+	removeBtn.title = 'Delete node';
+	removeBtn.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+	removeBtn.addEventListener( 'click', () => hooks.onRemoveNode( node.id ) );
+	header.appendChild( removeBtn );
+	container.appendChild( header );
+
+	const body = el( 'div', 'rete-node-body' );
+	container.appendChild( body );
+
+	const connectedInputs = new Set(
+		hooks.getConnections().filter( ( c ) => c.target === node.id ).map( ( c ) => c.targetInput )
+	);
+
+	// Outputs first (top), inputs below - purely cosmetic ordering choice.
+	typeDef.outputs.forEach( ( key ) => {
+		const row = el( 'div', 'rete-socket-row rete-socket-row-output' );
+		row.appendChild( el( 'span', 'rete-socket-label', key ) );
+		const socket = el( 'div', 'rete-socket rete-socket-output' );
+		row.appendChild( socket );
+		body.appendChild( row );
+		void area.emit( { type: 'render', data: { element: socket, type: 'socket', nodeId: node.id, side: 'output', key } } );
+	} );
+
+	typeDef.inputs.forEach( ( key ) => {
+		const row = el( 'div', 'rete-socket-row rete-socket-row-input' );
+		const socket = el( 'div', 'rete-socket rete-socket-input' );
+		row.appendChild( socket );
+		row.appendChild( el( 'span', 'rete-socket-label', key ) );
+
+		if ( ! connectedInputs.has( key ) ) {
+			row.appendChild( renderInlineControl( node, key, hooks ) );
+		}
+
+		body.appendChild( row );
+		void area.emit( { type: 'render', data: { element: socket, type: 'socket', nodeId: node.id, side: 'input', key } } );
+	} );
+
+	// Node-specific config controls (not sockets) - e.g. oscillator waveform, math op,
+	// and the property-get/set target+property pickers.
+	renderNodeControls( body, node, hooks );
+}
+
+function renderInlineControl( node, key, hooks ) {
+	const value = node.data ? node.data[ key ] : undefined;
+	const input = document.createElement( 'input' );
+	input.className = 'rete-inline-control';
+	input.type = 'number';
+	input.step = 'any';
+	input.value = typeof value === 'number' ? value : 0;
+	input.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+	input.addEventListener( 'change', () => {
+		node.data[ key ] = Number( input.value ) || 0;
+		hooks.onNodeDataChanged( node );
+	} );
+	return input;
+}
+
+function select( options, value, onChange ) {
+	const sel = document.createElement( 'select' );
+	sel.className = 'rete-inline-select';
+	options.forEach( ( opt ) => {
+		const option = document.createElement( 'option' );
+		option.value = opt;
+		option.textContent = opt;
+		if ( opt === value ) option.selected = true;
+		sel.appendChild( option );
+	} );
+	sel.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+	sel.addEventListener( 'change', () => onChange( sel.value ) );
+	return sel;
+}
+
+function renderNodeControls( body, node, hooks ) {
+	if ( node.type === 'oscillator' ) {
+		const row = el( 'div', 'rete-node-controls' );
+		row.appendChild( select( [ 'sine', 'triangle', 'square', 'sawtooth' ], node.data.waveform, ( v ) => {
+			node.data.waveform = v;
+			hooks.onNodeDataChanged( node );
+		} ) );
+		body.appendChild( row );
+	}
+
+	if ( node.type === 'math' ) {
+		const row = el( 'div', 'rete-node-controls' );
+		row.appendChild( select( [ 'add', 'sub', 'mul', 'div', 'min', 'max' ], node.data.op, ( v ) => {
+			node.data.op = v;
+			hooks.onNodeDataChanged( node );
+		} ) );
+		body.appendChild( row );
+	}
+
+	if ( node.type === 'color' ) {
+		const row = el( 'div', 'rete-node-controls' );
+		const input = document.createElement( 'input' );
+		input.type = 'color';
+		input.value = node.data.hex || '#ffffff';
+		input.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+		input.addEventListener( 'change', () => {
+			node.data.hex = input.value;
+			hooks.onNodeDataChanged( node );
+		} );
+		row.appendChild( input );
+		body.appendChild( row );
+	}
+
+	if ( node.type === 'property-get' || node.type === 'property-set' ) {
+		const row = el( 'div', 'rete-node-controls' );
+
+		const targetSelect = document.createElement( 'select' );
+		targetSelect.className = 'rete-inline-select';
+		const blank = document.createElement( 'option' );
+		blank.value = '';
+		blank.textContent = '(select object)';
+		targetSelect.appendChild( blank );
+		hooks.getSceneObjects().forEach( ( obj ) => {
+			const option = document.createElement( 'option' );
+			option.value = obj.uuid;
+			option.textContent = obj.name || obj.type;
+			if ( obj.uuid === node.data.target_uuid ) option.selected = true;
+			targetSelect.appendChild( option );
+		} );
+		targetSelect.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+		targetSelect.addEventListener( 'change', () => {
+			node.data.target_uuid = targetSelect.value;
+			hooks.onNodeDataChanged( node );
+			renderPropertySelect();
+		} );
+		row.appendChild( targetSelect );
+
+		const propertyContainer = el( 'div' );
+		row.appendChild( propertyContainer );
+		body.appendChild( row );
+
+		function renderPropertySelect() {
+			propertyContainer.innerHTML = '';
+			const target = hooks.getSceneObjects().find( ( o ) => o.uuid === node.data.target_uuid );
+			if ( ! target ) return;
+			const properties = hooks.getAnimatableProperties( target );
+			const propSelect = select( properties, node.data.property, ( v ) => {
+				node.data.property = v;
+				hooks.onNodeDataChanged( node );
+			} );
+			propertyContainer.appendChild( propSelect );
+		}
+		renderPropertySelect();
+	}
+}
+
+// Draws one connection as an SVG cubic-bezier path between its source/target socket
+// DOM elements - recomputed on demand (not continuously) since area-plugin only tells
+// us "something changed", not what, so the window re-triggers this via area.update().
+function renderConnectionPath( element, connection, area, sourceSocketEl, targetSocketEl, overridePoint ) {
+	element.classList.add( 'rete-connection' );
+	if ( ! element.firstChild ) {
+		const svg = document.createElementNS( 'http://www.w3.org/2000/svg', 'svg' );
+		svg.setAttribute( 'class', 'rete-connection-svg' );
+		const path = document.createElementNS( 'http://www.w3.org/2000/svg', 'path' );
+		path.setAttribute( 'class', 'rete-connection-path' );
+		svg.appendChild( path );
+		element.appendChild( svg );
+	}
+
+	const holder = area.area.content.holder;
+	const holderRect = holder.getBoundingClientRect();
+	const k = area.area.transform.k || 1;
+
+	function socketPoint( socketEl ) {
+		const rect = socketEl.getBoundingClientRect();
+		return {
+			x: ( rect.left + rect.width / 2 - holderRect.left ) / k,
+			y: ( rect.top + rect.height / 2 - holderRect.top ) / k,
+		};
+	}
+
+	const start = sourceSocketEl ? socketPoint( sourceSocketEl ) : overridePoint;
+	const end = targetSocketEl ? socketPoint( targetSocketEl ) : overridePoint;
+	if ( ! start || ! end ) return;
+
+	const dx = Math.max( 40, Math.abs( end.x - start.x ) / 2 );
+	const d = `M ${ start.x } ${ start.y } C ${ start.x + dx } ${ start.y }, ${ end.x - dx } ${ end.y }, ${ end.x } ${ end.y }`;
+
+	const svg = element.querySelector( '.rete-connection-svg' );
+	const path = element.querySelector( '.rete-connection-path' );
+	const minX = Math.min( start.x, end.x ) - 20;
+	const minY = Math.min( start.y, end.y ) - 20;
+	const w = Math.abs( end.x - start.x ) + 40;
+	const h = Math.abs( end.y - start.y ) + 40;
+	svg.setAttribute( 'viewBox', `${ minX } ${ minY } ${ w } ${ h }` );
+	svg.style.left = minX + 'px';
+	svg.style.top = minY + 'px';
+	svg.style.width = w + 'px';
+	svg.style.height = h + 'px';
+	path.setAttribute( 'transform', `translate(${ -minX }, ${ -minY })` );
+	path.setAttribute( 'd', d );
+}
+
+// Wires a vanilla renderer into an already-constructed NodeEditor+AreaPlugin+ConnectionPlugin
+// trio. `hooks` - see calls above for the full shape - is supplied by ReteGraphWindow.js.
+function attachReteRenderer( editor, area, connection, hooks ) {
+
+	const socketElements = new Map(); // "nodeId::side::key" -> HTMLElement
+
+	area.addPipe( ( context ) => {
+		if ( ! context || typeof context !== 'object' ) return context;
+
+		if ( context.type === 'render' ) {
+			const { element, type, payload } = context.data;
+
+			if ( type === 'node' ) {
+				renderNodeBody( element, payload, area, hooks );
+			} else if ( type === 'socket' ) {
+				socketElements.set( `${ context.data.nodeId }::${ context.data.side }::${ context.data.key }`, element );
+			} else if ( type === 'connection' ) {
+				const sourceEl = socketElements.get( `${ payload.source }::output::${ payload.sourceOutput }` );
+				const targetEl = socketElements.get( `${ payload.target }::input::${ payload.targetInput }` );
+				const overridePoint = context.data.start || context.data.end;
+				renderConnectionPath( element, payload, area, sourceEl, targetEl, overridePoint );
+			}
+		}
+
+		if ( context.type === 'nodetranslated' || context.type === 'zoomed' || context.type === 'translated' ) {
+			editor.getConnections().forEach( ( c ) => void area.update( 'connection', c.id ) );
+		}
+
+		if ( context.type === 'unmount' ) {
+			for ( const [ key, el2 ] of socketElements ) {
+				if ( el2 === context.data.element ) socketElements.delete( key );
+			}
+		}
+
+		return context;
+	} );
+}
+
+export { attachReteRenderer };

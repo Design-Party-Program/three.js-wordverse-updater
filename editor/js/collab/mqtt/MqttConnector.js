@@ -213,6 +213,10 @@ class MqttConnector {
         this.#editor.scene.userData.timeline = arrMessageObj.content.sceneData.timeline || { duration: 10, nodes: [], bases: {} };
         this.#editor.signals.sceneTimelineChanged.dispatch();
 
+        // Rete Interactions graph (ReteGraphWindow.js) - also sent as a plain object
+        this.#editor.scene.userData.reteGraph = arrMessageObj.content.sceneData.reteGraph || { version: 1, nodes: [], connections: [] };
+        this.#editor.signals.reteGraphChanged.dispatch();
+
         // Ctrl+G group containers must exist before any member below reparents into them
         ( arrMessageObj.content.sceneData.groups || [] ).forEach( groupProps => {
           if ( this.#editor.objectByUuid( groupProps.uuid ) ) return;

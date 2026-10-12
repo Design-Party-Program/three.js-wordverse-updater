@@ -1,0 +1,17 @@
+{
+  "name": "wordverse-rete-bundle",
+  "private": true,
+  "version": "1.0.0",
+  "description": "One-time build script that bundles rete.js v2 core + area-plugin + connection-plugin into a single vendored ESM file for the no-build-step three.js editor. Re-run `npm run build` after bumping versions below.",
+  "scripts": {
+    "build": "esbuild entry.js --bundle --format=esm --outfile=../rete/rete-bundle.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  },
+  "dependencies": {
+    "rete": "2.0.6",
+    "rete-area-plugin": "2.1.0",
+    "rete-connection-plugin": "2.0.5"
+  }
+}
