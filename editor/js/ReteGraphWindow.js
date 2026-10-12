@@ -28,6 +28,7 @@ function injectStylesOnce() {
 		.ReteGraphWindow-content { width: 90vw; height: 80vh; max-width: 1400px; display: flex; flex-direction: column; padding: 0; }
 		.rete-toolbar { display:flex; align-items:center; gap:6px; padding:6px 10px; border-bottom:1px solid #444; flex-shrink:0; flex-wrap:wrap; }
 		.rete-toolbar select, .rete-toolbar button { font-size: 11px; }
+		.rete-node-description { font-size:11px; color:#999; font-style:italic; }
 		.rete-area-container { position:relative; flex:1; overflow:hidden; background:#2b2b2b; background-image: radial-gradient(#444 1px, transparent 1px); background-size: 20px 20px; }
 		.rete-node { position:absolute; top:0; left:0; min-width:160px; background:#3a3a3a; border:1px solid #555; border-radius:6px; color:#eee; font-size:11px; box-shadow:0 2px 6px rgba(0,0,0,0.4); user-select:none; }
 		.rete-node-selected { border-color:#2196F3; }
@@ -105,6 +106,16 @@ function ReteGraphWindow( editor ) {
 	const addButton = new UIButton( 'Add Node' );
 	addButton.onClick( () => addNode( addSelect.value ) );
 	toolbar.add( addButton );
+
+	const addDescription = new UIText( '' ).setClass( 'rete-node-description' );
+	toolbar.add( addDescription );
+
+	function updateAddDescription() {
+		const typeDef = NODE_TYPES[ addSelect.value ];
+		addDescription.setValue( typeDef && typeDef.description || '' );
+	}
+	addSelect.addEventListener( 'change', updateAddDescription );
+	updateAddDescription();
 
 	const closeButton = new UIButton( 'Close' );
 	closeButton.dom.style.marginLeft = 'auto';

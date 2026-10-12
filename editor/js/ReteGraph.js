@@ -137,18 +137,21 @@ const NODE_DEFAULTS = {
 const NODE_TYPES = {
 	time: {
 		label: 'Time',
+		description: 'Outputs the graph\'s elapsed seconds and last frame delta.',
 		inputs: [],
 		outputs: [ 'seconds', 'delta' ],
 		compute: ( data, getInput, context ) => ( { seconds: context.time, delta: context.delta || 0 } ),
 	},
 	constant: {
 		label: 'Constant',
+		description: 'A fixed, user-editable number.',
 		inputs: [],
 		outputs: [ 'value' ],
 		compute: ( data ) => ( { value: data.value } ),
 	},
 	oscillator: {
 		label: 'Oscillator',
+		description: 'Repeating sine/triangle/square/sawtooth wave over time.',
 		inputs: [ 'time', 'frequency', 'amplitude', 'offset', 'phase' ],
 		outputs: [ 'value' ],
 		compute: ( data, getInput, context ) => {
@@ -163,6 +166,7 @@ const NODE_TYPES = {
 	},
 	math: {
 		label: 'Math',
+		description: 'Add/subtract/multiply/divide/min/max of two numbers.',
 		inputs: [ 'a', 'b' ],
 		outputs: [ 'value' ],
 		compute: ( data, getInput ) => {
@@ -172,6 +176,7 @@ const NODE_TYPES = {
 	},
 	clamp: {
 		label: 'Clamp',
+		description: 'Restricts a value to the [min, max] range.',
 		inputs: [ 'value', 'min', 'max' ],
 		outputs: [ 'value' ],
 		compute: ( data, getInput ) => {
@@ -182,6 +187,7 @@ const NODE_TYPES = {
 	},
 	'map-range': {
 		label: 'Map Range',
+		description: 'Rescales a value from one [inMin, inMax] range to [outMin, outMax].',
 		inputs: [ 'value', 'inMin', 'inMax', 'outMin', 'outMax' ],
 		outputs: [ 'value' ],
 		compute: ( data, getInput ) => ( {
@@ -193,6 +199,7 @@ const NODE_TYPES = {
 	},
 	vector3: {
 		label: 'Vector3',
+		description: 'Combines separate x/y/z numbers into one vector.',
 		inputs: [ 'x', 'y', 'z' ],
 		outputs: [ 'vector' ],
 		compute: ( data, getInput ) => ( {
@@ -201,6 +208,7 @@ const NODE_TYPES = {
 	},
 	'vector3-decompose': {
 		label: 'Break Vector3',
+		description: 'Splits a vector into separate x/y/z number outputs.',
 		inputs: [ 'vector' ],
 		outputs: [ 'x', 'y', 'z' ],
 		compute: ( data, getInput ) => {
@@ -210,18 +218,21 @@ const NODE_TYPES = {
 	},
 	color: {
 		label: 'Color',
+		description: 'A hex color string, pickable via the swatch control.',
 		inputs: [ 'hex' ],
 		outputs: [ 'value' ],
 		compute: ( data, getInput ) => ( { value: String( getInput( 'hex' ) || '#ffffff' ) } ),
 	},
 	'property-get': {
 		label: 'Get Property',
+		description: 'Reads a live property off a chosen scene object.',
 		inputs: [],
 		outputs: [ 'value' ],
 		compute: ( data, getInput, context ) => ( { value: context.readProperty( data.target_uuid, data.property ) } ),
 	},
 	'property-set': {
 		label: 'Set Property',
+		description: 'Writes a value onto a chosen scene object\'s property every frame.',
 		inputs: [ 'value' ],
 		outputs: [],
 		compute: ( data, getInput, context ) => {
@@ -231,6 +242,7 @@ const NODE_TYPES = {
 	},
 	compare: {
 		label: 'Compare',
+		description: 'Outputs true/false from comparing a to b (>, <, >=, <=, ==, !=).',
 		inputs: [ 'a', 'b' ],
 		outputs: [ 'value' ],
 		compute: ( data, getInput ) => {
@@ -240,6 +252,7 @@ const NODE_TYPES = {
 	},
 	logic: {
 		label: 'Logic',
+		description: 'Boolean AND/OR/NOT/XOR of two inputs.',
 		inputs: [ 'a', 'b' ],
 		outputs: [ 'value' ],
 		compute: ( data, getInput ) => {
@@ -249,6 +262,7 @@ const NODE_TYPES = {
 	},
 	'flip-flop': {
 		label: 'Flip-Flop',
+		description: 'Toggles true/false each time `trigger` rises from off to on.',
 		inputs: [ 'trigger' ],
 		outputs: [ 'value' ],
 		// Toggles its persisted boolean state on each rising edge of `trigger` - the only
@@ -266,6 +280,7 @@ const NODE_TYPES = {
 	},
 	impulse: {
 		label: 'Impulse',
+		description: 'Pulses true for a single tick when `trigger` rises from off to on.',
 		inputs: [ 'trigger' ],
 		outputs: [ 'value' ],
 		// Outputs true for exactly the one tick where `trigger` rises from falsy to truthy.
@@ -278,6 +293,7 @@ const NODE_TYPES = {
 	},
 	random: {
 		label: 'Random',
+		description: 'Seeded random number between min/max - continuous or re-rolled per trigger.',
 		inputs: [ 'trigger', 'min', 'max' ],
 		outputs: [ 'value' ],
 		// 'continuous' mode re-rolls every tick; 'trigger' mode only re-rolls on a rising
@@ -295,6 +311,7 @@ const NODE_TYPES = {
 	},
 	damp: {
 		label: 'Damp (Smooth)',
+		description: 'Smooths a value toward its target over time at the given rate.',
 		inputs: [ 'value', 'rate' ],
 		outputs: [ 'value' ],
 		// Frame-rate-independent exponential smoothing toward `value` at the given `rate`
@@ -315,6 +332,7 @@ const NODE_TYPES = {
 	// reteGraphEngine.ts since the r3f player has no equivalent UI to display it in.
 	watch: {
 		label: 'Watch',
+		description: 'Editor-only debug node - shows its input\'s live value, no scene effect.',
 		inputs: [ 'value' ],
 		outputs: [],
 		compute: ( data, getInput ) => {
