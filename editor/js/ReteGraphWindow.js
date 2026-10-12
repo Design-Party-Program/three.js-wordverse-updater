@@ -306,6 +306,11 @@ function ReteGraphWindow( editor ) {
 	this.open = function () {
 		setup();
 		this.dom.style.display = '';
+		// Move keyboard focus off the viewport/sidebar so the editor's global Delete/Backspace
+		// shortcut (Sidebar.Settings.Shortcuts.js) can't act on the scene selection while this
+		// modal is up - that handler also checks isAnyDialogOpen() as the primary guard, this
+		// is belt-and-suspenders for anything else listening on the previously-focused element.
+		if ( document.activeElement && document.activeElement !== document.body ) document.activeElement.blur();
 		loadGraph();
 		if ( ! rafId ) rafId = requestAnimationFrame( tick );
 	};

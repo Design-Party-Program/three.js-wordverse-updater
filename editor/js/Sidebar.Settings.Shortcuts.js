@@ -103,7 +103,19 @@ function SidebarSettingsShortcuts( editor ) {
 
 	}
 
+	// Every modal in this editor (ReteGraphWindow, TextureParametersDialog, GLTFImportDialog,
+	// Menubar.Render's dialogs, ...) shares the `.Dialog` class and is only visible/attached
+	// while open - reuse that as a generic "don't let global shortcuts touch the scene" signal
+	// instead of listing every dialog by name here.
+	function isAnyDialogOpen() {
+
+		return Array.from( document.querySelectorAll( '.Dialog' ) ).some( ( el ) => el.style.display !== 'none' );
+
+	}
+
 	document.addEventListener( 'keydown', function ( event ) {
+
+		if ( isAnyDialogOpen() ) return;
 
 		const activeTag = document.activeElement ? document.activeElement.tagName : '';
 		const isEditingText = activeTag === 'INPUT' || activeTag === 'TEXTAREA' ||
