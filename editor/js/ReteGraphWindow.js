@@ -206,6 +206,15 @@ function ReteGraphWindow( editor ) {
 			const pos = graphNode.position || [ 0, 0 ];
 			await area.translate( graphNode.id, { x: pos[ 0 ], y: pos[ 1 ] } );
 		}
+
+		// AreaPlugin's addNodeView() fires its node/socket 'render' events via a
+		// fire-and-forget `void this.emit(...)` that editor.addNode() never awaits, so
+		// ReteGraphRenderer's socketElements map can still be mid-update here - wiring a
+		// connection before its sockets are registered makes it silently fail to render
+		// (no DOM element to anchor to). Waiting a frame guarantees every microtask queued
+		// above has flushed before we touch connections.
+		await new Promise( ( resolve ) => requestAnimationFrame( resolve ) );
+
 		for ( const c of graph.connections ) {
 			// Guard against a persisted connection whose endpoint node failed to load.
 			if ( ! graphNodesById.has( c.source ) || ! graphNodesById.has( c.target ) ) continue;
