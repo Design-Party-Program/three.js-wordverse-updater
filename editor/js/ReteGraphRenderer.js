@@ -268,8 +268,20 @@ function attachReteRenderer( editor, area, connection, hooks ) {
 			} else if ( type === 'socket' ) {
 				socketElements.set( `${ context.data.nodeId }::${ context.data.side }::${ context.data.key }`, element );
 			} else if ( type === 'connection' ) {
-				const sourceEl = socketElements.get( `${ payload.source }::output::${ payload.sourceOutput }` );
-				const targetEl = socketElements.get( `${ payload.target }::input::${ payload.targetInput }` );
+				const sourceKey = `${ payload.source }::output::${ payload.sourceOutput }`;
+				const targetKey = `${ payload.target }::input::${ payload.targetInput }`;
+				const sourceEl = socketElements.get( sourceKey );
+				const targetEl = socketElements.get( targetKey );
+				if ( ! sourceEl || ! targetEl ) {
+					// Surfaces exactly which socket lookup failed (and what IS registered)
+					// instead of silently drawing nothing - this has been the recurring
+					// failure point for connection rendering.
+					console.warn( 'Rete: connection render skipped, missing socket element(s)', {
+						connectionId: payload.id, sourceKey, targetKey,
+						hasSource: !! sourceEl, hasTarget: !! targetEl,
+						knownSockets: Array.from( socketElements.keys() ),
+					} );
+				}
 				const overridePoint = context.data.start || context.data.end;
 				renderConnectionPath( element, payload, area, sourceEl, targetEl, overridePoint );
 			}
