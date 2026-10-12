@@ -18,6 +18,7 @@ import {
 } from './ReteGraph.js';
 import { attachReteRenderer, formatWatchValue } from './ReteGraphRenderer.js';
 import { readPropertyValue, applyPropertyValue, getAnimatablePropertiesForObject } from './SceneTimeline.js';
+import { ensureMidiAccess, readMidi } from './MidiRegistry.js';
 
 let stylesInjected = false;
 function injectStylesOnce() {
@@ -307,6 +308,11 @@ function ReteGraphWindow( editor ) {
 				const obj = editor.scene.getObjectByProperty( 'uuid', uuid );
 				if ( obj ) applyPropertyValue( obj, property, value );
 			},
+			getGroupMembers: ( groupUuid ) => {
+				const group = editor.scene.getObjectByProperty( 'uuid', groupUuid );
+				return group && group.userData && group.userData.wvIsGroupContainer ? group.children.map( ( c ) => c.uuid ) : [];
+			},
+			readMidi: ( mode, channel, number ) => readMidi( mode, channel, number ),
 		} );
 
 		for ( const [ id, el ] of watchElements ) {
@@ -325,6 +331,7 @@ function ReteGraphWindow( editor ) {
 		// modal is up - that handler also checks isAnyDialogOpen() as the primary guard, this
 		// is belt-and-suspenders for anything else listening on the previously-focused element.
 		if ( document.activeElement && document.activeElement !== document.body ) document.activeElement.blur();
+		ensureMidiAccess();
 		loadGraph();
 		if ( ! rafId ) rafId = requestAnimationFrame( tick );
 	};

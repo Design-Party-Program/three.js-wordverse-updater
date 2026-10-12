@@ -269,6 +269,86 @@ function renderNodeControls( body, node, hooks ) {
 		row.appendChild( el( 'span', 'rete-node-description', '(no sound in editor preview)' ) );
 		body.appendChild( row );
 	}
+
+	if ( node.type === 'group-set' ) {
+		const row = el( 'div', 'rete-node-controls' );
+
+		const groupSelect = document.createElement( 'select' );
+		groupSelect.className = 'rete-inline-select';
+		const blank = document.createElement( 'option' );
+		blank.value = '';
+		blank.textContent = '(select group)';
+		groupSelect.appendChild( blank );
+		hooks.getSceneObjects().filter( ( obj ) => obj.userData && obj.userData.wvIsGroupContainer ).forEach( ( obj ) => {
+			const option = document.createElement( 'option' );
+			option.value = obj.uuid;
+			option.textContent = obj.name || 'Group';
+			if ( obj.uuid === node.data.group_uuid ) option.selected = true;
+			groupSelect.appendChild( option );
+		} );
+		groupSelect.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+		groupSelect.addEventListener( 'change', () => {
+			node.data.group_uuid = groupSelect.value;
+			hooks.onNodeDataChanged( node );
+			renderPropertySelect();
+		} );
+		row.appendChild( groupSelect );
+
+		const propertyContainer = el( 'div' );
+		row.appendChild( propertyContainer );
+		body.appendChild( row );
+
+		function renderPropertySelect() {
+			propertyContainer.innerHTML = '';
+			const target = hooks.getSceneObjects().find( ( o ) => o.uuid === node.data.group_uuid );
+			if ( ! target ) return;
+			const properties = hooks.getAnimatableProperties( target );
+			const propSelect = select( properties, node.data.property, ( v ) => {
+				node.data.property = v;
+				hooks.onNodeDataChanged( node );
+			} );
+			propertyContainer.appendChild( propSelect );
+		}
+		renderPropertySelect();
+	}
+
+	if ( node.type === 'midi-input' ) {
+		const row = el( 'div', 'rete-node-controls' );
+		row.appendChild( select( [ 'note', 'cc' ], node.data.mode, ( v ) => {
+			node.data.mode = v;
+			hooks.onNodeDataChanged( node );
+		} ) );
+
+		const channelInput = document.createElement( 'input' );
+		channelInput.className = 'rete-inline-control';
+		channelInput.type = 'number';
+		channelInput.title = 'MIDI channel (0 = any)';
+		channelInput.min = '0';
+		channelInput.max = '16';
+		channelInput.value = node.data.channel || 0;
+		channelInput.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+		channelInput.addEventListener( 'change', () => {
+			node.data.channel = Number( channelInput.value ) || 0;
+			hooks.onNodeDataChanged( node );
+		} );
+		row.appendChild( channelInput );
+
+		const numberInput = document.createElement( 'input' );
+		numberInput.className = 'rete-inline-control';
+		numberInput.type = 'number';
+		numberInput.title = 'Note or CC number (0-127)';
+		numberInput.min = '0';
+		numberInput.max = '127';
+		numberInput.value = node.data.number || 0;
+		numberInput.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+		numberInput.addEventListener( 'change', () => {
+			node.data.number = Number( numberInput.value ) || 0;
+			hooks.onNodeDataChanged( node );
+		} );
+		row.appendChild( numberInput );
+
+		body.appendChild( row );
+	}
 }
 
 // Draws one connection as an SVG cubic-bezier path between its source/target socket

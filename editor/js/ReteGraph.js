@@ -133,6 +133,9 @@ const NODE_DEFAULTS = {
 	damp: { value: 0, rate: 5 },
 	'audio-analyser': { target_uuid: '' },
 	watch: {},
+	'iterator-index': {},
+	'group-set': { group_uuid: '', property: 'position.y' },
+	'midi-input': { mode: 'note', channel: 0, number: 60 },
 };
 
 const NODE_TYPES = {
@@ -353,7 +356,89 @@ const NODE_TYPES = {
 			return context.readAudioLevels( data.target_uuid );
 		},
 	},
+	// Source node reading the per-member index/count injected by a 'group-set' node's
+	// evaluation loop (see evaluateInputWithContext/evaluateGraph below). Outside of that
+	// loop (e.g. wired straight into a property-set) it always reads index 0 of 1.
+	'iterator-index': {
+		label: 'Iterator Index',
+		description: 'Current index/count/t (0-1) - only varies per-member inside a Group Set node.',
+		inputs: [],
+		outputs: [ 'index', 'count', 't' ],
+		compute: ( data, getInput, context ) => {
+			const count = Math.max( 1, Number( context.iteratorCount ) || 1 );
+			const index = Number( context.iteratorIndex ) || 0;
+			return { index, count, t: count > 1 ? index / ( count - 1 ) : 0 };
+		},
+	},
+	// Sink node, like 'property-set' but targets EVERY member of a chosen group - see the
+	// special-cased handling in evaluateGraph() below, which re-runs this node's 'value'
+	// input chain once per member with a fresh iteratorIndex/iteratorCount in context (so
+	// an upstream 'iterator-index' node can vary the result per member, e.g. to arrange
+	// pre-placed duplicate objects into a grid/circle/line). Does NOT create or destroy
+	// objects - only existing group members already present in the scene are affected.
+	'group-set': {
+		label: 'Set Group Property',
+		description: 'Writes a value onto every member of a chosen group, each frame (wire Iterator Index upstream for per-member variation).',
+		inputs: [ 'value' ],
+		outputs: [],
+		// Never actually invoked by evaluateGraph() - kept as a safe no-op in case anything
+		// else ever calls compute() on this node type directly outside the special path.
+		compute: () => ( {} ),
+	},
+	'midi-input': {
+		label: 'MIDI Input',
+		description: 'Reads a live note velocity/gate or CC value from a connected MIDI device.',
+		inputs: [],
+		outputs: [ 'value', 'gate' ],
+		compute: ( data, getInput, context ) => {
+			if ( ! context.readMidi ) return { value: 0, gate: false };
+			return context.readMidi( data.mode, data.channel, data.number );
+		},
+	},
 };
+
+// Re-evaluates the small dependency chain feeding ONE input socket using its OWN fresh
+// cache/visiting state and a caller-supplied context - used by 'group-set' to compute a
+// per-member value (so an upstream 'iterator-index' node sees a different index/count
+// for every member) without disturbing evaluateGraph()'s shared per-tick cache, which
+// assumes a single context for the whole call.
+function evaluateInputWithContext( graph, nodeId, inputKey, context ) {
+	const nodesById = new Map( graph.nodes.map( ( n ) => [ n.id, n ] ) );
+	const cache = new Map();
+	const visiting = new Set();
+
+	function findInputConnection( id, key ) {
+		return graph.connections.find( ( c ) => c.target === id && c.targetInput === key );
+	}
+
+	function computeNode( id ) {
+		if ( cache.has( id ) ) return cache.get( id );
+		if ( visiting.has( id ) ) return {};
+		const node = nodesById.get( id );
+		const typeDef = node && NODE_TYPES[ node.type ];
+		if ( ! node || ! typeDef ) return {};
+		visiting.add( id );
+		const getInput = ( key ) => {
+			const connection = findInputConnection( id, key );
+			if ( ! connection ) return node.data ? node.data[ key ] : undefined;
+			const sourceOutputs = computeNode( connection.source );
+			const value = sourceOutputs[ connection.sourceOutput ];
+			return value !== undefined ? value : ( node.data ? node.data[ key ] : undefined );
+		};
+		const outputs = typeDef.compute( node.data || {}, getInput, context );
+		visiting.delete( id );
+		cache.set( id, outputs );
+		return outputs;
+	}
+
+	const connection = findInputConnection( nodeId, inputKey );
+	if ( ! connection ) {
+		const node = nodesById.get( nodeId );
+		return node && node.data ? node.data[ inputKey ] : undefined;
+	}
+	const outputs = computeNode( connection.source );
+	return outputs[ connection.sourceOutput ];
+}
 
 // Evaluates every 'property-set' sink node once, pulling its dependency chain on
 // demand with per-tick memoization (`cache`) so a value shared by multiple sinks (a
@@ -397,9 +482,18 @@ function evaluateGraph( graph, context ) {
 		return outputs;
 	}
 
-	graph.nodes
-		.filter( ( n ) => n.type === 'property-set' || n.type === 'watch' )
-		.forEach( ( n ) => computeNode( n.id ) );
+	graph.nodes.forEach( ( n ) => {
+		if ( n.type === 'property-set' || n.type === 'watch' ) {
+			computeNode( n.id );
+		} else if ( n.type === 'group-set' ) {
+			const members = context.getGroupMembers ? context.getGroupMembers( n.data.group_uuid ) : [];
+			members.forEach( ( uuid, index ) => {
+				const memberContext = Object.assign( {}, context, { iteratorIndex: index, iteratorCount: members.length } );
+				const value = evaluateInputWithContext( graph, n.id, 'value', memberContext );
+				context.applyProperty( uuid, n.data.property, value );
+			} );
+		}
+	} );
 }
 
 export {
