@@ -131,6 +131,7 @@ const NODE_DEFAULTS = {
 	impulse: { trigger: false },
 	random: { mode: 'continuous', min: 0, max: 1, seed: 1, trigger: false },
 	damp: { value: 0, rate: 5 },
+	'audio-analyser': { target_uuid: '' },
 	watch: {},
 };
 
@@ -338,6 +339,18 @@ const NODE_TYPES = {
 		compute: ( data, getInput ) => {
 			data._lastValue = getInput( 'value' );
 			return {};
+		},
+	},
+	// Editor-side preview always reads zero (no audio plays in this authoring surface) -
+	// context.readAudioLevels is only wired up by the r3f player (see ReteGraphPlayer.tsx).
+	'audio-analyser': {
+		label: 'Audio Analyser',
+		description: 'Bass/mid/treble/overall levels from a model\'s ambient audio (r3f player only).',
+		inputs: [],
+		outputs: [ 'bass', 'mid', 'treble', 'level' ],
+		compute: ( data, getInput, context ) => {
+			if ( ! context.readAudioLevels ) return { bass: 0, mid: 0, treble: 0, level: 0 };
+			return context.readAudioLevels( data.target_uuid );
 		},
 	},
 };

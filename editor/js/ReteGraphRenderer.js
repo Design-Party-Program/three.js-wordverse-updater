@@ -243,6 +243,32 @@ function renderNodeControls( body, node, hooks ) {
 		}
 		renderPropertySelect();
 	}
+
+	if ( node.type === 'audio-analyser' ) {
+		const row = el( 'div', 'rete-node-controls' );
+
+		const targetSelect = document.createElement( 'select' );
+		targetSelect.className = 'rete-inline-select';
+		const blank = document.createElement( 'option' );
+		blank.value = '';
+		blank.textContent = '(select object)';
+		targetSelect.appendChild( blank );
+		hooks.getSceneObjects().forEach( ( obj ) => {
+			const option = document.createElement( 'option' );
+			option.value = obj.uuid;
+			option.textContent = obj.name || obj.type;
+			if ( obj.uuid === node.data.target_uuid ) option.selected = true;
+			targetSelect.appendChild( option );
+		} );
+		targetSelect.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+		targetSelect.addEventListener( 'change', () => {
+			node.data.target_uuid = targetSelect.value;
+			hooks.onNodeDataChanged( node );
+		} );
+		row.appendChild( targetSelect );
+		row.appendChild( el( 'span', 'rete-node-description', '(no sound in editor preview)' ) );
+		body.appendChild( row );
+	}
 }
 
 // Draws one connection as an SVG cubic-bezier path between its source/target socket
