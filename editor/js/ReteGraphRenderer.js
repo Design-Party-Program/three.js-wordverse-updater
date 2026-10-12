@@ -28,6 +28,16 @@ function el( tag, className, text ) {
 	return node;
 }
 
+// Keeps the 'watch' node's live readout compact regardless of the piped-in value's type.
+function formatWatchValue( value ) {
+	if ( value === undefined ) return '-';
+	if ( typeof value === 'number' ) return value.toFixed( 3 );
+	if ( typeof value === 'object' && value !== null ) {
+		return Object.keys( value ).map( ( k ) => `${ k }:${ Number( value[ k ] ).toFixed( 2 ) }` ).join( ' ' );
+	}
+	return String( value );
+}
+
 // Renders one node's body into the (already-positioned) container AreaPlugin gives us.
 // `reteNode` is rete's own lightweight bookkeeping object ({id,inputs,outputs,selected} -
 // see toReteNode() in ReteGraphWindow.js) and carries NO type/data; the real graph node
@@ -141,6 +151,41 @@ function renderNodeControls( body, node, hooks ) {
 			hooks.onNodeDataChanged( node );
 		} ) );
 		body.appendChild( row );
+	}
+
+	if ( node.type === 'compare' ) {
+		const row = el( 'div', 'rete-node-controls' );
+		row.appendChild( select( [ 'gt', 'lt', 'gte', 'lte', 'eq', 'neq' ], node.data.op, ( v ) => {
+			node.data.op = v;
+			hooks.onNodeDataChanged( node );
+		} ) );
+		body.appendChild( row );
+	}
+
+	if ( node.type === 'logic' ) {
+		const row = el( 'div', 'rete-node-controls' );
+		row.appendChild( select( [ 'and', 'or', 'not', 'xor' ], node.data.op, ( v ) => {
+			node.data.op = v;
+			hooks.onNodeDataChanged( node );
+		} ) );
+		body.appendChild( row );
+	}
+
+	if ( node.type === 'random' ) {
+		const row = el( 'div', 'rete-node-controls' );
+		row.appendChild( select( [ 'continuous', 'trigger' ], node.data.mode, ( v ) => {
+			node.data.mode = v;
+			hooks.onNodeDataChanged( node );
+		} ) );
+		body.appendChild( row );
+	}
+
+	if ( node.type === 'watch' ) {
+		const row = el( 'div', 'rete-node-controls' );
+		const display = el( 'span', 'rete-watch-value', formatWatchValue( node.data._lastValue ) );
+		row.appendChild( display );
+		body.appendChild( row );
+		hooks.registerWatchElement( node.id, display );
 	}
 
 	if ( node.type === 'color' ) {
@@ -301,4 +346,4 @@ function attachReteRenderer( editor, area, connection, hooks ) {
 	} );
 }
 
-export { attachReteRenderer };
+export { attachReteRenderer, formatWatchValue };

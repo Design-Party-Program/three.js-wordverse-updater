@@ -87,6 +87,32 @@ function mapRange( value, inMin, inMax, outMin, outMax ) {
 	return outMin + t * ( outMax - outMin );
 }
 
+const COMPARE_OPS = {
+	gt: ( a, b ) => a > b,
+	lt: ( a, b ) => a < b,
+	gte: ( a, b ) => a >= b,
+	lte: ( a, b ) => a <= b,
+	eq: ( a, b ) => a === b,
+	neq: ( a, b ) => a !== b,
+};
+
+const LOGIC_OPS = {
+	and: ( a, b ) => a && b,
+	or: ( a, b ) => a || b,
+	not: ( a ) => ! a,
+	xor: ( a, b ) => a !== b,
+};
+
+// Mulberry32 - tiny deterministic PRNG so a given `seed` reproduces the same sequence
+// across editor/player/reloads (not cryptographic, just needs to be fast + seedable).
+function nextSeeded( data ) {
+	if ( typeof data._seedState !== 'number' ) data._seedState = ( Number( data.seed ) || 0 ) >>> 0;
+	data._seedState = ( data._seedState + 0x6D2B79F5 ) | 0;
+	let t = Math.imul( data._seedState ^ ( data._seedState >>> 15 ), 1 | data._seedState );
+	t = ( t + Math.imul( t ^ ( t >>> 7 ), 61 | t ) ) ^ t;
+	return ( ( t ^ ( t >>> 14 ) ) >>> 0 ) / 4294967296;
+}
+
 const NODE_DEFAULTS = {
 	time: {},
 	constant: { value: 0 },
@@ -99,6 +125,13 @@ const NODE_DEFAULTS = {
 	color: { hex: '#ffffff' },
 	'property-get': { target_uuid: '', property: 'position.y' },
 	'property-set': { target_uuid: '', property: 'position.y' },
+	compare: { op: 'gt', a: 0, b: 0 },
+	logic: { op: 'and', a: false, b: false },
+	'flip-flop': { trigger: false },
+	impulse: { trigger: false },
+	random: { mode: 'continuous', min: 0, max: 1, seed: 1, trigger: false },
+	damp: { value: 0, rate: 5 },
+	watch: {},
 };
 
 const NODE_TYPES = {
@@ -196,6 +229,99 @@ const NODE_TYPES = {
 			return {};
 		},
 	},
+	compare: {
+		label: 'Compare',
+		inputs: [ 'a', 'b' ],
+		outputs: [ 'value' ],
+		compute: ( data, getInput ) => {
+			const op = COMPARE_OPS[ data.op ] || COMPARE_OPS.gt;
+			return { value: op( Number( getInput( 'a' ) ), Number( getInput( 'b' ) ) ) };
+		},
+	},
+	logic: {
+		label: 'Logic',
+		inputs: [ 'a', 'b' ],
+		outputs: [ 'value' ],
+		compute: ( data, getInput ) => {
+			const op = LOGIC_OPS[ data.op ] || LOGIC_OPS.and;
+			return { value: !! op( !! getInput( 'a' ), !! getInput( 'b' ) ) };
+		},
+	},
+	'flip-flop': {
+		label: 'Flip-Flop',
+		inputs: [ 'trigger' ],
+		outputs: [ 'value' ],
+		// Toggles its persisted boolean state on each rising edge of `trigger` - the only
+		// node type (besides impulse/random) that mutates `data` across ticks rather than
+		// being a pure function of its inputs, since "remember the last toggle" has no
+		// other representation in a pull-based per-tick evaluator.
+		compute: ( data, getInput ) => {
+			const triggerValue = !! getInput( 'trigger' );
+			const rising = triggerValue && ! data._prevTrigger;
+			data._prevTrigger = triggerValue;
+			if ( data._state === undefined ) data._state = false;
+			if ( rising ) data._state = ! data._state;
+			return { value: data._state };
+		},
+	},
+	impulse: {
+		label: 'Impulse',
+		inputs: [ 'trigger' ],
+		outputs: [ 'value' ],
+		// Outputs true for exactly the one tick where `trigger` rises from falsy to truthy.
+		compute: ( data, getInput ) => {
+			const triggerValue = !! getInput( 'trigger' );
+			const rising = triggerValue && ! data._prevTrigger;
+			data._prevTrigger = triggerValue;
+			return { value: rising };
+		},
+	},
+	random: {
+		label: 'Random',
+		inputs: [ 'trigger', 'min', 'max' ],
+		outputs: [ 'value' ],
+		// 'continuous' mode re-rolls every tick; 'trigger' mode only re-rolls on a rising
+		// edge of `trigger`, holding its value otherwise - same edge-detection as impulse.
+		compute: ( data, getInput ) => {
+			const min = Number( getInput( 'min' ) );
+			const max = Number( getInput( 'max' ) );
+			const triggerValue = !! getInput( 'trigger' );
+			const rising = triggerValue && ! data._prevTrigger;
+			data._prevTrigger = triggerValue;
+			const shouldRoll = data.mode !== 'trigger' || rising || data._value === undefined;
+			if ( shouldRoll ) data._value = min + nextSeeded( data ) * ( max - min );
+			return { value: data._value };
+		},
+	},
+	damp: {
+		label: 'Damp (Smooth)',
+		inputs: [ 'value', 'rate' ],
+		outputs: [ 'value' ],
+		// Frame-rate-independent exponential smoothing toward `value` at the given `rate`
+		// (higher = snappier). Persists `_current` across ticks the same way flip-flop/
+		// impulse/random persist their own state on `data`.
+		compute: ( data, getInput, context ) => {
+			const target = Number( getInput( 'value' ) );
+			const rate = Number( getInput( 'rate' ) );
+			if ( typeof data._current !== 'number' || ! isFinite( data._current ) ) data._current = target;
+			const delta = Math.max( 0, Number( context.delta ) || 0 );
+			const t = 1 - Math.exp( - rate * delta );
+			data._current = data._current + ( target - data._current ) * t;
+			return { value: data._current };
+		},
+	},
+	// Editor-only debug sink - has no effect on the scene, just surfaces its input's live
+	// value in the node body (see ReteGraphRenderer.js/ReteGraphWindow.js). Not ported to
+	// reteGraphEngine.ts since the r3f player has no equivalent UI to display it in.
+	watch: {
+		label: 'Watch',
+		inputs: [ 'value' ],
+		outputs: [],
+		compute: ( data, getInput ) => {
+			data._lastValue = getInput( 'value' );
+			return {};
+		},
+	},
 };
 
 // Evaluates every 'property-set' sink node once, pulling its dependency chain on
@@ -241,7 +367,7 @@ function evaluateGraph( graph, context ) {
 	}
 
 	graph.nodes
-		.filter( ( n ) => n.type === 'property-set' )
+		.filter( ( n ) => n.type === 'property-set' || n.type === 'watch' )
 		.forEach( ( n ) => computeNode( n.id ) );
 }
 

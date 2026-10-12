@@ -16,7 +16,7 @@ import {
 	evaluateGraph,
 	NODE_TYPES,
 } from './ReteGraph.js';
-import { attachReteRenderer } from './ReteGraphRenderer.js';
+import { attachReteRenderer, formatWatchValue } from './ReteGraphRenderer.js';
 import { readPropertyValue, applyPropertyValue, getAnimatablePropertiesForObject } from './SceneTimeline.js';
 
 let stylesInjected = false;
@@ -44,6 +44,7 @@ function injectStylesOnce() {
 		.rete-socket-input { background:#64b5f6; }
 		.rete-inline-control { width:56px; font-size:10px; }
 		.rete-inline-select { font-size:10px; }
+		.rete-watch-value { display:block; padding:4px 8px; font-family:monospace; font-size:11px; color:#8bc34a; word-break:break-all; }
 		.rete-connection { position:absolute; top:0; left:0; pointer-events:none; }
 		.rete-connection-svg { position:absolute; overflow:visible; }
 		.rete-connection-path { fill:none; stroke:#9e9e9e; stroke-width:2px; }
@@ -69,6 +70,7 @@ function ReteGraphWindow( editor ) {
 	let built = false;
 	let nodeEditor, area, connection;
 	const graphNodesById = new Map(); // id -> { type, data, position }
+	const watchElements = new Map(); // id -> the 'watch' node's live-readout <span>
 	let rafId = null;
 
 	const dom = new UIDiv();
@@ -139,6 +141,7 @@ function ReteGraphWindow( editor ) {
 			},
 			onNodeDataChanged: () => persist(),
 			onRemoveNode: ( id ) => removeNode( id ),
+			registerWatchElement: ( id, el ) => watchElements.set( id, el ),
 		} );
 
 		area.addPipe( ( context ) => {
@@ -188,6 +191,7 @@ function ReteGraphWindow( editor ) {
 		for ( const c of connectionsToRemove ) await nodeEditor.removeConnection( c.id );
 		await nodeEditor.removeNode( id );
 		graphNodesById.delete( id );
+		watchElements.delete( id );
 		persist();
 	}
 
@@ -203,10 +207,10 @@ function ReteGraphWindow( editor ) {
 		const graph = ( stored && Array.isArray( stored.nodes ) && Array.isArray( stored.connections ) )
 			? stored
 			: { version: 1, nodes: [], connections: [] };
-		console.log( 'Rete: loadGraph() reading from userData.reteGraph', stored );
 
 		await nodeEditor.clear();
 		graphNodesById.clear();
+		watchElements.clear();
 
 		for ( const graphNode of graph.nodes ) {
 			graphNodesById.set( graphNode.id, graphNode );
@@ -239,12 +243,6 @@ function ReteGraphWindow( editor ) {
 				console.warn( 'Rete: nodeEditor.addConnection() threw while loading', { connection: c, err } );
 			}
 		}
-
-		console.log( 'Rete: loadGraph() summary', {
-			storedNodeCount: graph.nodes.length, storedConnectionCount: graph.connections.length,
-			loadedConnectionCount: loadedConnectionIds.length,
-			liveConnectionCount: nodeEditor.getConnections().length,
-		} );
 
 		// On reopen, nodeEditor.clear()'s teardown (noderemoved/connectionremoved ->
 		// unmount) adds extra pending microtasks on top of the add-phase ones the rAF
@@ -299,6 +297,11 @@ function ReteGraphWindow( editor ) {
 				if ( obj ) applyPropertyValue( obj, property, value );
 			},
 		} );
+
+		for ( const [ id, el ] of watchElements ) {
+			const graphNode = graphNodesById.get( id );
+			el.textContent = formatWatchValue( graphNode && graphNode.data && graphNode.data._lastValue );
+		}
 	}
 
 	// ─── Open/close ──────────────────────────────────────────────────────────────
