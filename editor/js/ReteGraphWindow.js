@@ -192,14 +192,21 @@ function ReteGraphWindow( editor ) {
 	}
 
 	async function loadGraph() {
-		await nodeEditor.clear();
-		graphNodesById.clear();
-
+		// Capture the persisted graph BEFORE clear() - clear() removes the live
+		// nodeEditor's connections/nodes one at a time, and each removal fires
+		// 'connectionremoved'/'nodetranslated'-adjacent events that our own pipe below
+		// reacts to by calling persist() - which overwrites userData.reteGraph with
+		// whatever's left mid-teardown (eventually an empty graph). Reading `stored`
+		// after clear() meant every reopen replayed that now-wiped data instead of
+		// what was actually saved.
 		const stored = editor.scene.userData.reteGraph;
 		const graph = ( stored && Array.isArray( stored.nodes ) && Array.isArray( stored.connections ) )
 			? stored
 			: { version: 1, nodes: [], connections: [] };
 		console.log( 'Rete: loadGraph() reading from userData.reteGraph', stored );
+
+		await nodeEditor.clear();
+		graphNodesById.clear();
 
 		for ( const graphNode of graph.nodes ) {
 			graphNodesById.set( graphNode.id, graphNode );
