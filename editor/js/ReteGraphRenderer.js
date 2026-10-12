@@ -239,7 +239,10 @@ function renderConnectionPath( element, connection, area, sourceSocketEl, target
 	const minY = Math.min( start.y, end.y ) - 20;
 	const w = Math.abs( end.x - start.x ) + 40;
 	const h = Math.abs( end.y - start.y ) + 40;
-	svg.setAttribute( 'viewBox', `${ minX } ${ minY } ${ w } ${ h }` );
+	// viewBox stays "0 0 w h" (not "minX minY w h") since the path itself is already
+	// shifted into that box via its own transform below - combining both offsets would
+	// double-correct and draw the path far outside the visible connection element.
+	svg.setAttribute( 'viewBox', `0 0 ${ w } ${ h }` );
 	svg.style.left = minX + 'px';
 	svg.style.top = minY + 'px';
 	svg.style.width = w + 'px';
