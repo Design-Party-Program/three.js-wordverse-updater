@@ -29,18 +29,24 @@ function el( tag, className, text ) {
 }
 
 // Renders one node's body into the (already-positioned) container AreaPlugin gives us.
+// `reteNode` is rete's own lightweight bookkeeping object ({id,inputs,outputs,selected} -
+// see toReteNode() in ReteGraphWindow.js) and carries NO type/data; the real graph node
+// (type/data/position) is looked up via `hooks.getGraphNode(id)`.
 // `hooks` lets the owning window (ReteGraphWindow.js) supply live scene data without this
 // module needing to import Editor.js / three.js itself.
-function renderNodeBody( container, node, area, hooks ) {
+function renderNodeBody( container, reteNode, area, hooks ) {
+
+	const id = reteNode.id;
+	const node = hooks.getGraphNode( id );
 
 	container.innerHTML = '';
 	container.classList.add( 'rete-node' );
-	container.classList.toggle( 'rete-node-selected', !! node.selected );
-	container.classList.toggle( 'rete-node-highlighted', hooks.isHighlighted( node ) );
+	container.classList.toggle( 'rete-node-selected', !! reteNode.selected );
+	container.classList.toggle( 'rete-node-highlighted', hooks.isHighlighted( reteNode ) );
 
-	const typeDef = NODE_TYPES[ node.type ];
+	const typeDef = node && NODE_TYPES[ node.type ];
 	if ( ! typeDef ) {
-		container.appendChild( el( 'div', 'rete-node-header', node.type + ' (unknown)' ) );
+		container.appendChild( el( 'div', 'rete-node-header', ( node ? node.type : id ) + ' (unknown)' ) );
 		return;
 	}
 
@@ -48,7 +54,7 @@ function renderNodeBody( container, node, area, hooks ) {
 	const removeBtn = el( 'span', 'rete-node-remove', '\u00d7' );
 	removeBtn.title = 'Delete node';
 	removeBtn.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
-	removeBtn.addEventListener( 'click', () => hooks.onRemoveNode( node.id ) );
+	removeBtn.addEventListener( 'click', () => hooks.onRemoveNode( id ) );
 	header.appendChild( removeBtn );
 	container.appendChild( header );
 
@@ -56,7 +62,7 @@ function renderNodeBody( container, node, area, hooks ) {
 	container.appendChild( body );
 
 	const connectedInputs = new Set(
-		hooks.getConnections().filter( ( c ) => c.target === node.id ).map( ( c ) => c.targetInput )
+		hooks.getConnections().filter( ( c ) => c.target === id ).map( ( c ) => c.targetInput )
 	);
 
 	// Outputs first (top), inputs below - purely cosmetic ordering choice.
@@ -66,7 +72,7 @@ function renderNodeBody( container, node, area, hooks ) {
 		const socket = el( 'div', 'rete-socket rete-socket-output' );
 		row.appendChild( socket );
 		body.appendChild( row );
-		void area.emit( { type: 'render', data: { element: socket, type: 'socket', nodeId: node.id, side: 'output', key } } );
+		void area.emit( { type: 'render', data: { element: socket, type: 'socket', nodeId: id, side: 'output', key } } );
 	} );
 
 	typeDef.inputs.forEach( ( key ) => {
@@ -80,7 +86,7 @@ function renderNodeBody( container, node, area, hooks ) {
 		}
 
 		body.appendChild( row );
-		void area.emit( { type: 'render', data: { element: socket, type: 'socket', nodeId: node.id, side: 'input', key } } );
+		void area.emit( { type: 'render', data: { element: socket, type: 'socket', nodeId: id, side: 'input', key } } );
 	} );
 
 	// Node-specific config controls (not sockets) - e.g. oscillator waveform, math op,

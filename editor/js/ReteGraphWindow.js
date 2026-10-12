@@ -129,6 +129,7 @@ function ReteGraphWindow( editor ) {
 		AreaExtensions.selectableNodes( area, AreaExtensions.selector(), { accumulating: AreaExtensions.accumulateOnCtrl() } );
 
 		attachReteRenderer( nodeEditor, area, connection, {
+			getGraphNode: ( id ) => graphNodesById.get( id ),
 			getConnections: () => nodeEditor.getConnections(),
 			getSceneObjects: () => flattenSceneObjects( editor.scene ),
 			getAnimatableProperties: ( obj ) => getAnimatablePropertiesForObject( obj ),
