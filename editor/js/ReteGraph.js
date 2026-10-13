@@ -135,7 +135,9 @@ const NODE_DEFAULTS = {
 	watch: {},
 	'iterator-index': {},
 	'group-set': { group_uuid: '', property: 'position.y' },
-	'midi-input': { mode: 'note', channel: 0, number: 60 },
+	'midi-input': { source: 'device', mode: 'note', channel: 0, number: 60 },
+	switch: { condition: false, ifTrue: 1, ifFalse: 0 },
+	'play-sample': { target_uuid: '' },
 };
 
 const NODE_TYPES = {
@@ -387,12 +389,40 @@ const NODE_TYPES = {
 	},
 	'midi-input': {
 		label: 'MIDI Input',
-		description: 'Reads a live note velocity/gate or CC value from a connected MIDI device.',
+		description: 'Reads a live note/CC from a connected device, or from the scene\'s MIDI sequence file.',
 		inputs: [],
 		outputs: [ 'value', 'gate' ],
 		compute: ( data, getInput, context ) => {
-			if ( ! context.readMidi ) return { value: 0, gate: false };
-			return context.readMidi( data.mode, data.channel, data.number );
+			if ( data.source === 'sequence' ) {
+				return context.readMidiSequence ? context.readMidiSequence( data.mode, data.channel, data.number ) : { value: 0, gate: false };
+			}
+			return context.readMidi ? context.readMidi( data.mode, data.channel, data.number ) : { value: 0, gate: false };
+		},
+	},
+	switch: {
+		label: 'Switch',
+		description: 'Picks ifTrue or ifFalse based on a boolean condition - works for numbers, strings (e.g. colors), or any value.',
+		inputs: [ 'condition', 'ifTrue', 'ifFalse' ],
+		outputs: [ 'value' ],
+		compute: ( data, getInput ) => ( { value: getInput( 'condition' ) ? getInput( 'ifTrue' ) : getInput( 'ifFalse' ) } ),
+	},
+	// One-shot velocity-tiered sample trigger - on a rising edge of `trigger`, picks the
+	// target object's own audio_trigger_s/m/l/xl ACF field by `velocity` (raw MIDI 0-127:
+	// xl>=100, l:[50,100), m:[31,50), s:[1,31)) and plays it via positional audio. Mirrors
+	// the original Foundscape SoundshapeModel.tsx/Sound.tsx thresholds exactly.
+	'play-sample': {
+		label: 'Play Sample',
+		description: 'Plays a one-shot velocity-tiered sample on a scene object each time trigger rises.',
+		inputs: [ 'trigger', 'velocity' ],
+		outputs: [],
+		compute: ( data, getInput, context ) => {
+			const triggerValue = !! getInput( 'trigger' );
+			const rising = triggerValue && ! data._prevTrigger;
+			data._prevTrigger = triggerValue;
+			if ( rising && context.playSample ) {
+				context.playSample( data.target_uuid, Number( getInput( 'velocity' ) ) || 0 );
+			}
+			return {};
 		},
 	},
 };
@@ -483,7 +513,7 @@ function evaluateGraph( graph, context ) {
 	}
 
 	graph.nodes.forEach( ( n ) => {
-		if ( n.type === 'property-set' || n.type === 'watch' ) {
+		if ( n.type === 'property-set' || n.type === 'watch' || n.type === 'play-sample' ) {
 			computeNode( n.id );
 		} else if ( n.type === 'group-set' ) {
 			const members = context.getGroupMembers ? context.getGroupMembers( n.data.group_uuid ) : [];
