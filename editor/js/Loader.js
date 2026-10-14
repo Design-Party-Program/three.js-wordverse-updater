@@ -12,6 +12,38 @@ import { LoaderUtils } from './LoaderUtils.js';
 
 import { unzipSync, strFromU8 } from 'three/addons/libs/fflate.module.js';
 
+// glTF 1.0 is unsupported; binary .glb is always >= 2.0, text .gltf needs a version check.
+function isGLTF1( contents ) {
+
+	let resultContent;
+
+	if ( typeof contents === 'string' ) {
+
+		resultContent = contents;
+
+	} else {
+
+		const magic = new TextDecoder().decode( new Uint8Array( contents, 0, 4 ) );
+
+		if ( magic === 'glTF' ) return false;
+
+		resultContent = new TextDecoder().decode( contents );
+
+	}
+
+	try {
+
+		const resultJson = JSON.parse( resultContent );
+		return resultJson.asset !== undefined && String( resultJson.asset.version )[ 0 ] === '1';
+
+	} catch ( e ) {
+
+		return false;
+
+	}
+
+}
+
 function Loader( editor ) {
 
 	const scope = this;
