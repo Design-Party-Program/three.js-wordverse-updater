@@ -28,6 +28,11 @@ function el( tag, className, text ) {
 	return node;
 }
 
+// Below this zoom factor, nodes are too small on screen for their controls to be usable -
+// skip building them (dropdowns/inputs, each potentially walking the whole scene for its
+// options) entirely rather than pay the DOM cost for hundreds of invisible-detail nodes.
+const LOD_ZOOM_THRESHOLD = 0.35;
+
 // Keeps the 'watch' node's live readout compact regardless of the piped-in value's type.
 function formatWatchValue( value ) {
 	if ( value === undefined ) return '-';
@@ -71,6 +76,9 @@ function renderNodeBody( container, reteNode, area, hooks ) {
 	const body = el( 'div', 'rete-node-body' );
 	container.appendChild( body );
 
+	const zoom = area.area.transform.k || 1;
+	const lowDetail = zoom < LOD_ZOOM_THRESHOLD;
+
 	const connectedInputs = new Set(
 		hooks.getConnections().filter( ( c ) => c.target === id ).map( ( c ) => c.targetInput )
 	);
@@ -91,7 +99,7 @@ function renderNodeBody( container, reteNode, area, hooks ) {
 		row.appendChild( socket );
 		row.appendChild( el( 'span', 'rete-socket-label', key ) );
 
-		if ( ! connectedInputs.has( key ) ) {
+		if ( ! connectedInputs.has( key ) && ! lowDetail ) {
 			row.appendChild( renderInlineControl( node, key, hooks ) );
 		}
 
@@ -100,8 +108,10 @@ function renderNodeBody( container, reteNode, area, hooks ) {
 	} );
 
 	// Node-specific config controls (not sockets) - e.g. oscillator waveform, math op,
-	// and the property-get/set target+property pickers.
-	renderNodeControls( body, node, hooks );
+	// and the property-get/set target+property pickers. Skipped when zoomed out (LOD):
+	// these are the most expensive part per node (dropdowns, some backed by a full
+	// scene walk) and illegible at that scale anyway.
+	if ( ! lowDetail ) renderNodeControls( body, node, hooks );
 }
 
 function renderInlineControl( node, key, hooks ) {
@@ -438,6 +448,22 @@ function attachReteRenderer( editor, area, connection, hooks ) {
 
 	const socketElements = new Map(); // "nodeId::side::key" -> HTMLElement
 
+	// Panning/zooming moves every connection on screen, but raw pointermove/wheel events
+	// fire far more often than animation frames - coalesce the full-graph refresh to once
+	// per frame instead of once per event.
+	let pendingConnectionRefresh = null;
+	function scheduleConnectionRefresh() {
+		if ( pendingConnectionRefresh ) return;
+		pendingConnectionRefresh = requestAnimationFrame( () => {
+			pendingConnectionRefresh = null;
+			hooks.getConnections().forEach( ( c ) => void area.update( 'connection', c.id ) );
+		} );
+	}
+
+	// Crossing the LOD threshold changes every node's rendered content (controls shown/
+	// hidden) - re-render all nodes, but only on the rare frame where the bucket flips.
+	let lastLodBucket = ( ( area.area.transform.k || 1 ) < LOD_ZOOM_THRESHOLD ) ? 'low' : 'high';
+
 	area.addPipe( ( context ) => {
 		if ( ! context || typeof context !== 'object' ) return context;
 
@@ -468,8 +494,21 @@ function attachReteRenderer( editor, area, connection, hooks ) {
 			}
 		}
 
-		if ( context.type === 'nodetranslated' || context.type === 'zoomed' || context.type === 'translated' ) {
-			editor.getConnections().forEach( ( c ) => void area.update( 'connection', c.id ) );
+		if ( context.type === 'nodetranslated' ) {
+			// Only this node's own connections moved - no need to touch the other ~hundreds.
+			const movedId = context.data.id;
+			hooks.getConnections().filter( ( c ) => c.source === movedId || c.target === movedId )
+				.forEach( ( c ) => void area.update( 'connection', c.id ) );
+		}
+
+		if ( context.type === 'zoomed' || context.type === 'translated' ) {
+			scheduleConnectionRefresh();
+
+			const bucket = ( ( area.area.transform.k || 1 ) < LOD_ZOOM_THRESHOLD ) ? 'low' : 'high';
+			if ( bucket !== lastLodBucket ) {
+				lastLodBucket = bucket;
+				hooks.getAllNodeIds().forEach( ( id ) => void area.update( 'node', id ) );
+			}
 		}
 
 		if ( context.type === 'unmount' ) {

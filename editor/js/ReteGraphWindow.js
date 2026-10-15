@@ -31,7 +31,7 @@ function injectStylesOnce() {
 		.rete-toolbar select, .rete-toolbar button { font-size: 11px; }
 		.rete-node-description { font-size:11px; color:#999; font-style:italic; }
 		.rete-area-container { position:relative; flex:1; overflow:hidden; background:#2b2b2b; background-image: radial-gradient(#444 1px, transparent 1px); background-size: 20px 20px; }
-		.rete-node { position:absolute; top:0; left:0; min-width:160px; background:#3a3a3a; border:1px solid #555; border-radius:6px; color:#eee; font-size:11px; box-shadow:0 2px 6px rgba(0,0,0,0.4); user-select:none; }
+		.rete-node { position:absolute; top:0; left:0; min-width:160px; background:#3a3a3a; border:1px solid #555; border-radius:6px; color:#eee; font-size:11px; user-select:none; }
 		.rete-node-selected { border-color:#2196F3; }
 		.rete-node-highlighted { border-color:#ffb300; box-shadow:0 0 0 2px rgba(255,179,0,0.5); }
 		.rete-node-header { padding:4px 8px; background:#4a4a4a; border-radius:6px 6px 0 0; font-weight:bold; cursor:grab; display:flex; justify-content:space-between; }
@@ -74,6 +74,31 @@ function ReteGraphWindow( editor ) {
 	const graphNodesById = new Map(); // id -> { type, data, position }
 	const watchElements = new Map(); // id -> the 'watch' node's live-readout <span>
 	let rafId = null;
+
+	// getSceneObjects() backs several node types' target-object dropdowns and does a full
+	// scene.traverse() - with hundreds of nodes each asking for it during one render pass,
+	// cache it for the current animation frame instead of re-traversing per node.
+	let sceneObjectsCache = null;
+	function getCachedSceneObjects() {
+		if ( ! sceneObjectsCache ) {
+			sceneObjectsCache = flattenSceneObjects( editor.scene );
+			requestAnimationFrame( () => { sceneObjectsCache = null; } );
+		}
+		return sceneObjectsCache;
+	}
+
+	// persist() walks every node+connection to rebuild userData.reteGraph - cheap once,
+	// but 'nodetranslated' fires on every pointer-move while dragging a node, so coalesce
+	// repeated calls within the same animation frame into a single pass.
+	let persistScheduled = false;
+	function schedulePersist() {
+		if ( persistScheduled ) return;
+		persistScheduled = true;
+		requestAnimationFrame( () => {
+			persistScheduled = false;
+			persist();
+		} );
+	}
 
 	const dom = new UIDiv();
 	dom.setClass( 'Dialog' );
@@ -145,7 +170,8 @@ function ReteGraphWindow( editor ) {
 		attachReteRenderer( nodeEditor, area, connection, {
 			getGraphNode: ( id ) => graphNodesById.get( id ),
 			getConnections: () => nodeEditor.getConnections(),
-			getSceneObjects: () => flattenSceneObjects( editor.scene ),
+			getAllNodeIds: () => nodeEditor.getNodes().map( ( n ) => n.id ),
+			getSceneObjects: () => getCachedSceneObjects(),
 			getAnimatableProperties: ( obj ) => getAnimatablePropertiesForObject( obj ),
 			isHighlighted: ( reteNode ) => {
 				const graphNode = graphNodesById.get( reteNode.id );
@@ -160,7 +186,7 @@ function ReteGraphWindow( editor ) {
 			if ( context.type === 'nodetranslated' ) {
 				const graphNode = graphNodesById.get( context.data.id );
 				if ( graphNode ) graphNode.position = [ context.data.position.x, context.data.position.y ];
-				persist();
+				schedulePersist();
 			}
 			return context;
 		} );
