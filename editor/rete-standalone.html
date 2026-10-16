@@ -186,6 +186,7 @@
 			getGraphNode: ( id ) => graphNodesById.get( id ),
 			getConnections: () => nodeEditor.getConnections(),
 			getAllNodeIds: () => nodeEditor.getNodes().map( ( n ) => n.id ),
+			getAllNodes: () => Array.from( graphNodesById.values() ),
 			getSceneObjects: () => sceneObjects,
 			getAnimatableProperties,
 			isHighlighted: () => false, // no live viewport selection in standalone mode

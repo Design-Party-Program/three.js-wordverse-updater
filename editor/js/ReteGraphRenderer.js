@@ -99,7 +99,10 @@ function renderNodeBody( container, reteNode, area, hooks ) {
 		row.appendChild( socket );
 		row.appendChild( el( 'span', 'rete-socket-label', key ) );
 
-		if ( ! connectedInputs.has( key ) && ! lowDetail ) {
+		// target_uuid is a string (object uuid), not a number - renderInlineControl() only
+		// supports numeric defaults, and target_uuid already has its own dropdown picker
+		// below; still render its socket above so it can be wired from an Iterator Pair.
+		if ( ! connectedInputs.has( key ) && ! lowDetail && key !== 'target_uuid' ) {
 			row.appendChild( renderInlineControl( node, key, hooks ) );
 		}
 
@@ -142,6 +145,35 @@ function select( options, value, onChange ) {
 	sel.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
 	sel.addEventListener( 'change', () => onChange( sel.value ) );
 	return sel;
+}
+
+// Lets a 'property-set'/'play-sample'/'watch' node declare "I'm part of this loop's
+// body" (data.loop_id) - the same dropdown-picker pattern as target_uuid/group_uuid
+// elsewhere in this file, just picking a 'midi-pair-loop' node instead of a scene object.
+function renderLoopPicker( body, node, hooks ) {
+	const row = el( 'div', 'rete-node-controls' );
+	row.appendChild( el( 'span', 'rete-socket-label', 'Loop: ' ) );
+
+	const loopSelect = document.createElement( 'select' );
+	loopSelect.className = 'rete-inline-select';
+	const none = document.createElement( 'option' );
+	none.value = '';
+	none.textContent = '(none - run at top level)';
+	loopSelect.appendChild( none );
+	hooks.getAllNodes().filter( ( n ) => n.type === 'midi-pair-loop' ).forEach( ( loopNode ) => {
+		const option = document.createElement( 'option' );
+		option.value = loopNode.id;
+		option.textContent = `Loop ${ loopNode.id.slice( 0, 8 ) }`;
+		if ( loopNode.id === node.data.loop_id ) option.selected = true;
+		loopSelect.appendChild( option );
+	} );
+	loopSelect.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+	loopSelect.addEventListener( 'change', () => {
+		node.data.loop_id = loopSelect.value;
+		hooks.onNodeDataChanged( node );
+	} );
+	row.appendChild( loopSelect );
+	body.appendChild( row );
 }
 
 function renderNodeControls( body, node, hooks ) {
@@ -196,6 +228,7 @@ function renderNodeControls( body, node, hooks ) {
 		row.appendChild( display );
 		body.appendChild( row );
 		hooks.registerWatchElement( node.id, display );
+		renderLoopPicker( body, node, hooks );
 	}
 
 	if ( node.type === 'color' ) {
@@ -252,6 +285,8 @@ function renderNodeControls( body, node, hooks ) {
 			propertyContainer.appendChild( propSelect );
 		}
 		renderPropertySelect();
+
+		if ( node.type === 'property-set' ) renderLoopPicker( body, node, hooks );
 	}
 
 	if ( node.type === 'audio-analyser' ) {
@@ -346,20 +381,8 @@ function renderNodeControls( body, node, hooks ) {
 			hooks.onNodeDataChanged( node );
 		} );
 		row.appendChild( channelInput );
-
-		const numberInput = document.createElement( 'input' );
-		numberInput.className = 'rete-inline-control';
-		numberInput.type = 'number';
-		numberInput.title = 'Note or CC number (0-127)';
-		numberInput.min = '0';
-		numberInput.max = '127';
-		numberInput.value = node.data.number || 0;
-		numberInput.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
-		numberInput.addEventListener( 'change', () => {
-			node.data.number = Number( numberInput.value ) || 0;
-			hooks.onNodeDataChanged( node );
-		} );
-		row.appendChild( numberInput );
+		// 'number' is a wireable socket now (see ReteGraph.js) - its own inline numeric
+		// default is rendered generically by the socket-row loop above, no need to repeat it here.
 
 		body.appendChild( row );
 	}
@@ -388,53 +411,10 @@ function renderNodeControls( body, node, hooks ) {
 		row.appendChild( targetSelect );
 		row.appendChild( el( 'span', 'rete-node-description', '(no sound in editor preview)' ) );
 		body.appendChild( row );
+		renderLoopPicker( body, node, hooks );
 	}
 
-	if ( node.type === 'midi-pair-react' ) {
-		const configRow = el( 'div', 'rete-node-controls' );
-		configRow.appendChild( select( [ 'device', 'sequence' ], node.data.source || 'sequence', ( v ) => {
-			node.data.source = v;
-			hooks.onNodeDataChanged( node );
-		} ) );
-		configRow.appendChild( select( [ 'note', 'cc' ], node.data.mode, ( v ) => {
-			node.data.mode = v;
-			hooks.onNodeDataChanged( node );
-		} ) );
-
-		const numberControl = ( title, key, value ) => {
-			const input = document.createElement( 'input' );
-			input.className = 'rete-inline-control';
-			input.type = 'number';
-			input.step = 'any';
-			input.title = title;
-			input.value = value;
-			input.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
-			input.addEventListener( 'change', () => {
-				node.data[ key ] = Number( input.value ) || 0;
-				hooks.onNodeDataChanged( node );
-			} );
-			return input;
-		};
-		configRow.appendChild( numberControl( 'MIDI channel (0 = any)', 'channel', node.data.channel || 0 ) );
-		configRow.appendChild( numberControl( 'Decay rate', 'rate', node.data.rate ?? 6 ) );
-		configRow.appendChild( numberControl( 'Flash threshold', 'threshold', node.data.threshold ?? 0.05 ) );
-
-		const colorControl = ( title, key, value ) => {
-			const input = document.createElement( 'input' );
-			input.type = 'color';
-			input.title = title;
-			input.value = value || '#ffffff';
-			input.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
-			input.addEventListener( 'change', () => {
-				node.data[ key ] = input.value;
-				hooks.onNodeDataChanged( node );
-			} );
-			return input;
-		};
-		configRow.appendChild( colorControl( 'Flash color', 'color_on', node.data.color_on || '#ffff00' ) );
-		configRow.appendChild( colorControl( 'Rest color', 'color_off', node.data.color_off || '#ffffff' ) );
-		body.appendChild( configRow );
-
+	if ( node.type === 'midi-pair-list' ) {
 		const listContainer = el( 'div', 'rete-pair-list' );
 		body.appendChild( listContainer );
 
@@ -504,6 +484,14 @@ function renderNodeControls( body, node, hooks ) {
 		} );
 		addRow.appendChild( addButton );
 		body.appendChild( addRow );
+	}
+
+	if ( node.type === 'midi-pair-loop' ) {
+		const row = el( 'div', 'rete-node-controls' );
+		const bodyCount = hooks.getAllNodes().filter( ( n ) => n.data && n.data.loop_id === node.id ).length;
+		row.appendChild( el( 'span', 'rete-node-description',
+			`${ bodyCount } node${ bodyCount === 1 ? '' : 's' } tagged to this loop (set via their own "Loop" picker).` ) );
+		body.appendChild( row );
 	}
 }
 

@@ -113,6 +113,20 @@ function nextSeeded( data ) {
 	return ( ( t ^ ( t >>> 14 ) ) >>> 0 ) / 4294967296;
 }
 
+// Stateful nodes (impulse/damp/play-sample) normally persist their per-tick state (last
+// trigger, smoothed value, ...) directly on `data` - fine for a single standalone node,
+// but WRONG when the same node is re-evaluated once per pair inside a 'midi-pair-loop'
+// (each pair needs its OWN independent decay/edge-detection, not one shared value).
+// Falls back to `data` itself outside a loop, so non-loop graphs are unaffected.
+function getIterationState( data, context ) {
+	if ( context && context.iteratorUuid ) {
+		if ( ! data._state ) data._state = {};
+		if ( ! data._state[ context.iteratorUuid ] ) data._state[ context.iteratorUuid ] = {};
+		return data._state[ context.iteratorUuid ];
+	}
+	return data;
+}
+
 const NODE_DEFAULTS = {
 	time: {},
 	constant: { value: 0 },
@@ -124,7 +138,7 @@ const NODE_DEFAULTS = {
 	'vector3-decompose': { x: 0, y: 0, z: 0 },
 	color: { hex: '#ffffff' },
 	'property-get': { target_uuid: '', property: 'position.y' },
-	'property-set': { target_uuid: '', property: 'position.y' },
+	'property-set': { target_uuid: '', property: 'position.y', loop_id: '' },
 	compare: { op: 'gt', a: 0, b: 0 },
 	logic: { op: 'and', a: false, b: false },
 	'flip-flop': { trigger: false },
@@ -132,17 +146,15 @@ const NODE_DEFAULTS = {
 	random: { mode: 'continuous', min: 0, max: 1, seed: 1, trigger: false },
 	damp: { value: 0, rate: 5 },
 	'audio-analyser': { target_uuid: '' },
-	watch: {},
+	watch: { loop_id: '' },
 	'iterator-index': {},
 	'group-set': { group_uuid: '', property: 'position.y' },
 	'midi-input': { source: 'device', mode: 'note', channel: 0, number: 60 },
 	switch: { condition: false, ifTrue: 1, ifFalse: 0 },
-	'play-sample': { target_uuid: '' },
-	'midi-pair-react': {
-		source: 'sequence', mode: 'note', channel: 0,
-		rate: 6, threshold: 0.05, color_on: '#ffff00', color_off: '#ffffff',
-		pairs: [], // [{ uuid, number }] - the (object, MIDI note) list this node loops over
-	},
+	'play-sample': { target_uuid: '', loop_id: '' },
+	'midi-pair-list': { pairs: [] }, // [{ uuid, number }] - wire its 'pairs' output into a 'midi-pair-loop'
+	'iterator-pair': {},
+	'midi-pair-loop': { pairs: [] }, // fallback when 'pairs' input isn't wired
 };
 
 const NODE_TYPES = {
@@ -243,11 +255,11 @@ const NODE_TYPES = {
 	},
 	'property-set': {
 		label: 'Set Property',
-		description: 'Writes a value onto a chosen scene object\'s property every frame.',
-		inputs: [ 'value' ],
+		description: 'Writes a value onto a chosen scene object\'s property every frame (wireable target_uuid - leave unwired to use the dropdown).',
+		inputs: [ 'value', 'target_uuid' ],
 		outputs: [],
 		compute: ( data, getInput, context ) => {
-			context.applyProperty( data.target_uuid, data.property, getInput( 'value' ) );
+			context.applyProperty( getInput( 'target_uuid' ), data.property, getInput( 'value' ) );
 			return {};
 		},
 	},
@@ -295,10 +307,11 @@ const NODE_TYPES = {
 		inputs: [ 'trigger' ],
 		outputs: [ 'value' ],
 		// Outputs true for exactly the one tick where `trigger` rises from falsy to truthy.
-		compute: ( data, getInput ) => {
+		compute: ( data, getInput, context ) => {
+			const state = getIterationState( data, context );
 			const triggerValue = !! getInput( 'trigger' );
-			const rising = triggerValue && ! data._prevTrigger;
-			data._prevTrigger = triggerValue;
+			const rising = triggerValue && ! state._prevTrigger;
+			state._prevTrigger = triggerValue;
 			return { value: rising };
 		},
 	},
@@ -327,15 +340,16 @@ const NODE_TYPES = {
 		outputs: [ 'value' ],
 		// Frame-rate-independent exponential smoothing toward `value` at the given `rate`
 		// (higher = snappier). Persists `_current` across ticks the same way flip-flop/
-		// impulse/random persist their own state on `data`.
+		// impulse/random persist their own state on `data` (or, inside a loop, per-pair).
 		compute: ( data, getInput, context ) => {
+			const state = getIterationState( data, context );
 			const target = Number( getInput( 'value' ) );
 			const rate = Number( getInput( 'rate' ) );
-			if ( typeof data._current !== 'number' || ! isFinite( data._current ) ) data._current = target;
+			if ( typeof state._current !== 'number' || ! isFinite( state._current ) ) state._current = target;
 			const delta = Math.max( 0, Number( context.delta ) || 0 );
 			const t = 1 - Math.exp( - rate * delta );
-			data._current = data._current + ( target - data._current ) * t;
-			return { value: data._current };
+			state._current = state._current + ( target - state._current ) * t;
+			return { value: state._current };
 		},
 	},
 	// Editor-only debug sink - has no effect on the scene, just surfaces its input's live
@@ -394,14 +408,15 @@ const NODE_TYPES = {
 	},
 	'midi-input': {
 		label: 'MIDI Input',
-		description: 'Reads a live note/CC from a connected device, or from the scene\'s MIDI sequence file.',
-		inputs: [],
+		description: 'Reads a live note/CC from a connected device, or from the scene\'s MIDI sequence file (wireable number - e.g. from an Iterator Pair).',
+		inputs: [ 'number' ],
 		outputs: [ 'value', 'gate' ],
 		compute: ( data, getInput, context ) => {
+			const number = getInput( 'number' );
 			if ( data.source === 'sequence' ) {
-				return context.readMidiSequence ? context.readMidiSequence( data.mode, data.channel, data.number ) : { value: 0, gate: false };
+				return context.readMidiSequence ? context.readMidiSequence( data.mode, data.channel, number ) : { value: 0, gate: false };
 			}
-			return context.readMidi ? context.readMidi( data.mode, data.channel, data.number ) : { value: 0, gate: false };
+			return context.readMidi ? context.readMidi( data.mode, data.channel, number ) : { value: 0, gate: false };
 		},
 	},
 	switch: {
@@ -417,62 +432,60 @@ const NODE_TYPES = {
 	// the original Foundscape SoundshapeModel.tsx/Sound.tsx thresholds exactly.
 	'play-sample': {
 		label: 'Play Sample',
-		description: 'Plays a one-shot velocity-tiered sample on a scene object each time trigger rises.',
-		inputs: [ 'trigger', 'velocity' ],
+		description: 'Plays a one-shot velocity-tiered sample on a scene object each time trigger rises (wireable target_uuid - e.g. from an Iterator Pair).',
+		inputs: [ 'trigger', 'velocity', 'target_uuid' ],
 		outputs: [],
 		compute: ( data, getInput, context ) => {
+			const state = getIterationState( data, context );
 			const triggerValue = !! getInput( 'trigger' );
-			const rising = triggerValue && ! data._prevTrigger;
-			data._prevTrigger = triggerValue;
+			const rising = triggerValue && ! state._prevTrigger;
+			state._prevTrigger = triggerValue;
 			if ( rising && context.playSample ) {
-				context.playSample( data.target_uuid, Number( getInput( 'velocity' ) ) || 0 );
+				context.playSample( getInput( 'target_uuid' ), Number( getInput( 'velocity' ) ) || 0 );
 			}
 			return {};
 		},
 	},
-	// Collapses the repeated "midi-input -> impulse -> damp -> compare -> switch ->
-	// property-set" + "play-sample" pattern (10 nodes per instance in the original
-	// Foundscape-emulation graph, 850 nodes total for ~85 instances) into ONE node that
-	// loops internally over an explicit (object uuid, MIDI note) list in its own data -
-	// no group/ACF schema dependency, the pair list IS the graph's own persisted JSON.
-	// Sink node like 'group-set' - see the special-cased dispatch in evaluateGraph() below.
-	'midi-pair-react': {
-		label: 'MIDI Pair React',
-		description: 'For each (object, MIDI note) pair, flashes the object\'s color_texture and plays its own audio_trigger sample when that note is hit.',
+	// Holds the (object uuid, MIDI note) list a 'midi-pair-loop' iterates over - a plain
+	// source node, no side effects. Separated from the loop itself so the list can be
+	// edited/generated independently of however many loops end up consuming it.
+	'midi-pair-list': {
+		label: 'MIDI Pair List',
+		description: 'A list of (object, MIDI note) pairs - wire its "pairs" output into a MIDI Pair Loop.',
 		inputs: [],
-		outputs: [],
+		outputs: [ 'pairs' ],
+		compute: ( data ) => ( { pairs: Array.isArray( data.pairs ) ? data.pairs : [] } ),
+	},
+	// Source node reading the current iteration's object uuid/note number injected by a
+	// 'midi-pair-loop' (see evaluateNodeWithContext/evaluateGraph below) - mirrors
+	// 'iterator-index' (used by 'group-set') but for pair-keyed loops. Outside a loop
+	// (e.g. wired straight into something at the top level) it reads blank/zero.
+	'iterator-pair': {
+		label: 'Iterator Pair',
+		description: 'Current (object uuid, MIDI note, index, count) - only varies per-pair inside a MIDI Pair Loop.',
+		inputs: [],
+		outputs: [ 'uuid', 'number', 'index', 'count' ],
 		compute: ( data, getInput, context ) => {
-			const pairs = Array.isArray( data.pairs ) ? data.pairs : [];
-			const rate = Number( data.rate ) || 6;
-			const threshold = Number( data.threshold ) || 0.05;
-			const colorOn = data.color_on || '#ffff00';
-			const colorOff = data.color_off || '#ffffff';
-			const delta = Math.max( 0, Number( context.delta ) || 0 );
-			const t = 1 - Math.exp( - rate * delta );
-			if ( ! data._state ) data._state = {};
-
-			pairs.forEach( ( pair ) => {
-				if ( ! pair || ! pair.uuid ) return;
-				const reading = data.source === 'sequence'
-					? ( context.readMidiSequence ? context.readMidiSequence( data.mode, data.channel, pair.number ) : { value: 0, gate: false } )
-					: ( context.readMidi ? context.readMidi( data.mode, data.channel, pair.number ) : { value: 0, gate: false } );
-
-				const state = data._state[ pair.uuid ] || ( data._state[ pair.uuid ] = { damped: 0, prevGate: false } );
-				const gate = !! reading.gate;
-				const rising = gate && ! state.prevGate;
-				state.prevGate = gate;
-				const target = rising ? 1 : 0;
-				state.damped = state.damped + ( target - state.damped ) * t;
-
-				context.applyProperty( pair.uuid, 'color_texture', state.damped > threshold ? colorOn : colorOff );
-
-				if ( rising && context.playSample ) {
-					context.playSample( pair.uuid, Number( reading.value ) * 127 );
-				}
-			} );
-
-			return {};
+			const count = Math.max( 1, Number( context.iteratorCount ) || 1 );
+			const index = Number( context.iteratorIndex ) || 0;
+			return { uuid: context.iteratorUuid || '', number: Number( context.iteratorNumber ) || 0, index, count };
 		},
+	},
+	// The actual "for each pair" loop. Any 'property-set'/'play-sample'/'watch' node whose
+	// `data.loop_id` equals THIS node's id is considered part of its body - excluded from
+	// evaluateGraph()'s normal top-level dispatch (see below) and instead re-evaluated
+	// once per pair from `pairs`, with a fresh per-iteration cache/context so each pair
+	// gets independent state (see getIterationState) and sees its own uuid/number via any
+	// wired-in 'iterator-pair' node. Upstream nodes feeding the body (midi-input, impulse,
+	// damp, compare, switch, color, ...) do NOT need `loop_id` set themselves - they're
+	// pulled naturally by the body sink's own input chain, same as any normal wiring.
+	'midi-pair-loop': {
+		label: 'MIDI Pair Loop',
+		description: 'For each pair from "pairs" (wire from a MIDI Pair List), runs every node tagged "Loop: <this>" once, with that pair\'s object/note available via a wired Iterator Pair node.',
+		inputs: [ 'pairs' ],
+		outputs: [],
+		// Never actually invoked by evaluateGraph() - see the special-cased dispatch below.
+		compute: () => ( {} ),
 	},
 };
 
@@ -519,6 +532,43 @@ function evaluateInputWithContext( graph, nodeId, inputKey, context ) {
 	return outputs[ connection.sourceOutput ];
 }
 
+// Re-evaluates one NODE (not just one input socket) with its OWN fresh cache/visiting
+// state and a caller-supplied context - used by 'midi-pair-loop' to run a body sink
+// (property-set/play-sample/watch) once per pair, so its whole upstream chain (and any
+// stateful nodes in it, via getIterationState) sees that pair's own iteratorUuid/Number
+// rather than evaluateGraph()'s shared per-tick cache/context.
+function evaluateNodeWithContext( graph, nodeId, context ) {
+	const nodesById = new Map( graph.nodes.map( ( n ) => [ n.id, n ] ) );
+	const cache = new Map();
+	const visiting = new Set();
+
+	function findInputConnection( id, key ) {
+		return graph.connections.find( ( c ) => c.target === id && c.targetInput === key );
+	}
+
+	function computeNode( id ) {
+		if ( cache.has( id ) ) return cache.get( id );
+		if ( visiting.has( id ) ) return {};
+		const node = nodesById.get( id );
+		const typeDef = node && NODE_TYPES[ node.type ];
+		if ( ! node || ! typeDef ) return {};
+		visiting.add( id );
+		const getInput = ( key ) => {
+			const connection = findInputConnection( id, key );
+			if ( ! connection ) return node.data ? node.data[ key ] : undefined;
+			const sourceOutputs = computeNode( connection.source );
+			const value = sourceOutputs[ connection.sourceOutput ];
+			return value !== undefined ? value : ( node.data ? node.data[ key ] : undefined );
+		};
+		const outputs = typeDef.compute( node.data || {}, getInput, context );
+		visiting.delete( id );
+		cache.set( id, outputs );
+		return outputs;
+	}
+
+	computeNode( nodeId );
+}
+
 // Evaluates every 'property-set' sink node once, pulling its dependency chain on
 // demand with per-tick memoization (`cache`) so a value shared by multiple sinks (a
 // "diamond" dependency) is only computed once, and a cycle guard (`visiting`) so a
@@ -562,7 +612,12 @@ function evaluateGraph( graph, context ) {
 	}
 
 	graph.nodes.forEach( ( n ) => {
-		if ( n.type === 'property-set' || n.type === 'watch' || n.type === 'play-sample' || n.type === 'midi-pair-react' ) {
+		// Nodes tagged with `data.loop_id` only run inside their owning 'midi-pair-loop's
+		// per-pair iterations (see below) - never at the normal top level, even if they're
+		// themselves a sink type.
+		if ( n.data && n.data.loop_id ) return;
+
+		if ( n.type === 'property-set' || n.type === 'watch' || n.type === 'play-sample' ) {
 			computeNode( n.id );
 		} else if ( n.type === 'group-set' ) {
 			const members = context.getGroupMembers ? context.getGroupMembers( n.data.group_uuid ) : [];
@@ -570,6 +625,24 @@ function evaluateGraph( graph, context ) {
 				const memberContext = Object.assign( {}, context, { iteratorIndex: index, iteratorCount: members.length } );
 				const value = evaluateInputWithContext( graph, n.id, 'value', memberContext );
 				context.applyProperty( uuid, n.data.property, value );
+			} );
+		} else if ( n.type === 'midi-pair-loop' ) {
+			const wiredPairs = evaluateInputWithContext( graph, n.id, 'pairs', context );
+			const pairs = Array.isArray( wiredPairs ) ? wiredPairs : ( Array.isArray( n.data.pairs ) ? n.data.pairs : [] );
+			const bodyNodes = graph.nodes.filter( ( bn ) => bn.data && bn.data.loop_id === n.id );
+			pairs.forEach( ( pair, index ) => {
+				if ( ! pair || ! pair.uuid ) return;
+				const iterationContext = Object.assign( {}, context, {
+					iteratorUuid: pair.uuid,
+					iteratorNumber: pair.number,
+					iteratorIndex: index,
+					iteratorCount: pairs.length,
+				} );
+				bodyNodes.forEach( ( bodyNode ) => {
+					if ( bodyNode.type === 'property-set' || bodyNode.type === 'play-sample' || bodyNode.type === 'watch' ) {
+						evaluateNodeWithContext( graph, bodyNode.id, iterationContext );
+					}
+				} );
 			} );
 		}
 	} );

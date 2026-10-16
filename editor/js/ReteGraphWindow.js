@@ -200,6 +200,7 @@ function ReteGraphWindow( editor ) {
 			getGraphNode: ( id ) => graphNodesById.get( id ),
 			getConnections: () => nodeEditor.getConnections(),
 			getAllNodeIds: () => nodeEditor.getNodes().map( ( n ) => n.id ),
+			getAllNodes: () => Array.from( graphNodesById.values() ),
 			getSceneObjects: () => getCachedSceneObjects(),
 			getAnimatableProperties: ( obj ) => getAnimatablePropertiesForObject( obj ),
 			isHighlighted: ( reteNode ) => {
