@@ -29,6 +29,8 @@ function injectStylesOnce() {
 		.ReteGraphWindow-content { width: 90vw; height: 80vh; max-width: 1400px; display: flex; flex-direction: column; padding: 0; }
 		.rete-toolbar { display:flex; align-items:center; gap:6px; padding:6px 10px; border-bottom:1px solid #444; flex-shrink:0; flex-wrap:wrap; }
 		.rete-toolbar select, .rete-toolbar button { font-size: 11px; }
+		.rete-footer { display:flex; align-items:center; padding:6px 10px; border-top:1px solid #444; flex-shrink:0; }
+		.rete-footer button { font-size: 11px; }
 		.rete-node-description { font-size:11px; color:#999; font-style:italic; }
 		.rete-area-container { position:relative; flex:1; overflow:hidden; background:#2b2b2b; background-image: radial-gradient(#444 1px, transparent 1px); background-size: 20px 20px; }
 		.rete-node { position:absolute; top:0; left:0; min-width:160px; background:#3a3a3a; border:1px solid #555; border-radius:6px; color:#eee; font-size:11px; user-select:none; }
@@ -151,6 +153,31 @@ function ReteGraphWindow( editor ) {
 	const areaContainer = document.createElement( 'div' );
 	areaContainer.className = 'rete-area-container';
 	content.dom.appendChild( areaContainer );
+
+	// 850+ node graphs (e.g. scene 1339's Foundscape emulation) stay heavy even with the
+	// render-side perf fixes above, since this editor shares the main wp-admin page's
+	// thread/DOM with the three.js viewport, MQTT, etc. Popping the graph out into its own
+	// tab - no viewport, no MQTT, nothing else competing for the main thread - is the next
+	// lever. The popout has its own Save button (PATCHes only `rete_graph`, see
+	// rete-standalone.html) rather than sharing this window's full-scene persist().
+	const footer = new UIDiv();
+	footer.setClass( 'rete-footer' );
+	content.add( footer );
+
+	const popoutButton = new UIButton( '\u29c9 Open in new tab' );
+	popoutButton.onClick( () => {
+		const sceneId = editor.scene.userData.wpData && editor.scene.userData.wpData.id;
+		if ( ! sceneId ) {
+			alert( 'Save the scene at least once before opening the graph in a new tab.' );
+			return;
+		}
+		const url = new URL( parent.window.location.href );
+		url.searchParams.set( 'rete_standalone', '1' );
+		url.searchParams.set( 'vr_post_id', sceneId );
+		window.open( url.toString(), '_blank' );
+		this.close();
+	} );
+	footer.add( popoutButton );
 
 	// ─── Setup (lazy, first open only) ─────────────────────────────────────────────
 

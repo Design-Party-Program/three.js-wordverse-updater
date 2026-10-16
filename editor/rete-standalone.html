@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Rete Interactions</title>
+<style>
+	html, body { margin:0; padding:0; height:100%; background:#2b2b2b; color:#eee; font:12px -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif; overflow:hidden; }
+	#rete-toolbar { display:flex; align-items:center; gap:8px; padding:8px 12px; background:#333; border-bottom:1px solid #444; }
+	#rete-toolbar select, #rete-toolbar button { font-size:12px; }
+	#rete-scene-title { font-weight:bold; margin-right:8px; }
+	#rete-status { margin-left:auto; }
+	#rete-status.dirty { color:#ffb300; }
+	#rete-status.saving { color:#64b5f6; }
+	#rete-status.error { color:#ff5252; }
+	#rete-area { position:absolute; top:37px; left:0; right:0; bottom:0; overflow:hidden; background:#2b2b2b; background-image: radial-gradient(#444 1px, transparent 1px); background-size: 20px 20px; }
+
+	/* Same node/socket/connection styling as ReteGraphWindow.js's injected stylesheet - keep in sync. */
+	.rete-node-description { font-size:11px; color:#999; font-style:italic; }
+	.rete-node { position:absolute; top:0; left:0; min-width:160px; background:#3a3a3a; border:1px solid #555; border-radius:6px; color:#eee; font-size:11px; user-select:none; }
+	.rete-node-selected { border-color:#2196F3; }
+	.rete-node-highlighted { border-color:#ffb300; box-shadow:0 0 0 2px rgba(255,179,0,0.5); }
+	.rete-node-header { padding:4px 8px; background:#4a4a4a; border-radius:6px 6px 0 0; font-weight:bold; cursor:grab; display:flex; justify-content:space-between; }
+	.rete-node-remove { cursor:pointer; opacity:0.6; padding:0 2px; }
+	.rete-node-remove:hover { opacity:1; color:#ff5252; }
+	.rete-node-body { padding:4px 0; }
+	.rete-node-controls { padding:4px 8px; }
+	.rete-socket-row { display:flex; align-items:center; gap:4px; padding:2px 8px; position:relative; }
+	.rete-socket-row-output { justify-content:flex-end; }
+	.rete-socket-label { color:#ccc; }
+	.rete-socket { width:10px; height:10px; border-radius:50%; background:#8bc34a; border:1px solid #333; cursor:crosshair; flex-shrink:0; }
+	.rete-socket-input { background:#64b5f6; }
+	.rete-inline-control { width:56px; font-size:10px; }
+	.rete-inline-select { font-size:10px; }
+	.rete-watch-value { display:block; padding:4px 8px; font-family:monospace; font-size:11px; color:#8bc34a; word-break:break-all; }
+	.rete-connection { position:absolute; top:0; left:0; pointer-events:none; }
+	.rete-connection-svg { position:absolute; overflow:visible; }
+	.rete-connection-path { fill:none; stroke:#9e9e9e; stroke-width:2px; }
+</style>
+</head>
+<body>
+	<div id="rete-toolbar">
+		<span id="rete-scene-title">Loading…</span>
+		<select id="rete-add-select"></select>
+		<button id="rete-add-button">Add Node</button>
+		<button id="rete-save-button">Save</button>
+		<span id="rete-status"></span>
+	</div>
+	<div id="rete-area"></div>
+
+	<script type="module">
+		// Standalone, full-tab Rete Interactions graph editor - opened via the "Open in
+		// new tab" button in ReteGraphWindow.js's modal (see that file for the launcher).
+		// Unlike the modal, this page has NO live three.js scene/viewport: object/property
+		// dropdowns are built from the scene's plain ACF data (fetched once over REST)
+		// instead of walking a live Object3D tree, there is no live-preview tick()/
+		// evaluateGraph() loop (nothing to drive), and Save is an explicit button that
+		// PATCHes ONLY the `rete_graph` ACF field - it does not touch models/cameras/etc.
+		import { NodeEditor, AreaPlugin, AreaExtensions, ConnectionPlugin, ConnectionPresets } from './js/libs/rete/rete-bundle.js';
+		import { createReteNode, parseReteGraph, NODE_TYPES } from './js/ReteGraph.js';
+		import { attachReteRenderer } from './js/ReteGraphRenderer.js';
+
+		const params = new URLSearchParams( window.location.search );
+		const sceneId = params.get( 'vr_post_id' );
+		const nonce = ( window.POST_SUBMITTER && window.POST_SUBMITTER.nonce ) || '';
+
+		const titleEl = document.getElementById( 'rete-scene-title' );
+		const statusEl = document.getElementById( 'rete-status' );
+		const addSelect = document.getElementById( 'rete-add-select' );
+		const addButton = document.getElementById( 'rete-add-button' );
+		const saveButton = document.getElementById( 'rete-save-button' );
+		const areaContainer = document.getElementById( 'rete-area' );
+
+		function setStatus( text, cls ) {
+			statusEl.textContent = text;
+			statusEl.className = cls || '';
+		}
+
+		if ( ! sceneId ) {
+			setStatus( 'No scene specified (missing vr_post_id in URL).', 'error' );
+			throw new Error( 'Rete standalone: missing vr_post_id' );
+		}
+
+		Object.keys( NODE_TYPES ).forEach( ( type ) => {
+			const option = document.createElement( 'option' );
+			option.value = type;
+			option.textContent = NODE_TYPES[ type ].label;
+			addSelect.appendChild( option );
+		} );
+
+		// Mirrors SceneTimeline.js's getAnimatablePropertiesForObject() - keep in sync -
+		// but works off a plain {isCamera,isLight} tag instead of a live THREE.Object3D.
+		function getAnimatableProperties( obj ) {
+			const transform = [
+				'position', 'position.x', 'position.y', 'position.z',
+				'rotation', 'rotation.x', 'rotation.y', 'rotation.z',
+				'scale', 'scale.x', 'scale.y', 'scale.z',
+				'visible',
+			];
+			if ( obj.isCamera ) return transform.concat( [ 'fov', 'near', 'far' ] );
+			if ( obj.isLight ) return transform.concat( [ 'intensity', 'color' ] );
+			return transform.concat( [ 'color_texture' ] );
+		}
+
+		function buildSceneObjects( acf ) {
+			const list = [];
+			const pushAll = ( arr, isCamera, isLight ) => {
+				( arr || [] ).forEach( ( entry ) => {
+					if ( ! entry || ! entry.uuid ) return;
+					list.push( {
+						uuid: entry.uuid,
+						name: entry.name || '',
+						isCamera: !! isCamera,
+						isLight: !! isLight,
+						userData: { wvIsGroupContainer: false },
+					} );
+				} );
+			};
+			pushAll( acf.models );
+			pushAll( acf.primitives );
+			pushAll( acf.svg_models );
+			pushAll( acf.cameras, true, false );
+			pushAll( acf.lights, false, true );
+			( acf.groups || [] ).forEach( ( entry ) => {
+				if ( ! entry || ! entry.uuid ) return;
+				list.push( {
+					uuid: entry.uuid,
+					name: entry.name || 'Group',
+					isCamera: false,
+					isLight: false,
+					userData: { wvIsGroupContainer: true },
+				} );
+			} );
+			return list;
+		}
+
+		let sceneObjects = [];
+		let dirty = false;
+		let currentGraph = { version: 1, nodes: [], connections: [] };
+
+		const nodeEditor = new NodeEditor();
+		const area = new AreaPlugin( areaContainer );
+		const connection = new ConnectionPlugin();
+		nodeEditor.use( area );
+		area.use( connection );
+		connection.addPreset( ConnectionPresets.classic.setup() );
+		AreaExtensions.selectableNodes( area, AreaExtensions.selector(), { accumulating: AreaExtensions.accumulateOnCtrl() } );
+
+		const graphNodesById = new Map();
+		const watchElements = new Map();
+
+		function toReteNode( graphNode ) {
+			const typeDef = NODE_TYPES[ graphNode.type ];
+			const inputs = {};
+			( typeDef ? typeDef.inputs : [] ).forEach( ( key ) => { inputs[ key ] = { multipleConnections: false }; } );
+			const outputs = {};
+			( typeDef ? typeDef.outputs : [] ).forEach( ( key ) => { outputs[ key ] = { multipleConnections: true }; } );
+			return { id: graphNode.id, inputs, outputs, selected: false };
+		}
+
+		let persistScheduled = false;
+		function schedulePersist() {
+			if ( persistScheduled ) return;
+			persistScheduled = true;
+			requestAnimationFrame( () => {
+				persistScheduled = false;
+				syncGraphFromEditor();
+			} );
+		}
+
+		function syncGraphFromEditor() {
+			const nodes = nodeEditor.getNodes().map( ( n ) => {
+				const graphNode = graphNodesById.get( n.id );
+				return { id: n.id, type: graphNode.type, data: graphNode.data, position: graphNode.position || [ 0, 0 ] };
+			} );
+			const connections = nodeEditor.getConnections().map( ( c ) => ( {
+				id: c.id, source: c.source, sourceOutput: c.sourceOutput, target: c.target, targetInput: c.targetInput,
+			} ) );
+			currentGraph = { version: 1, nodes, connections };
+			dirty = true;
+			setStatus( 'Unsaved changes', 'dirty' );
+		}
+
+		attachReteRenderer( nodeEditor, area, connection, {
+			getGraphNode: ( id ) => graphNodesById.get( id ),
+			getConnections: () => nodeEditor.getConnections(),
+			getAllNodeIds: () => nodeEditor.getNodes().map( ( n ) => n.id ),
+			getSceneObjects: () => sceneObjects,
+			getAnimatableProperties,
+			isHighlighted: () => false, // no live viewport selection in standalone mode
+			onNodeDataChanged: () => schedulePersist(),
+			onRemoveNode: ( id ) => removeNode( id ),
+			registerWatchElement: ( id, el ) => watchElements.set( id, el ),
+		} );
+
+		area.addPipe( ( context ) => {
+			if ( context.type === 'nodetranslated' ) {
+				const graphNode = graphNodesById.get( context.data.id );
+				if ( graphNode ) graphNode.position = [ context.data.position.x, context.data.position.y ];
+				schedulePersist();
+			}
+			return context;
+		} );
+
+		nodeEditor.addPipe( ( context ) => {
+			if ( context.type === 'connectioncreated' || context.type === 'connectionremoved' ) schedulePersist();
+			return context;
+		} );
+
+		async function addNode( type ) {
+			const rect = areaContainer.getBoundingClientRect();
+			const { k, x, y } = area.area.transform;
+			const position = [ ( rect.width / 2 - x ) / k, ( rect.height / 2 - y ) / k ];
+			const graphNode = createReteNode( type, position );
+			graphNodesById.set( graphNode.id, graphNode );
+			await nodeEditor.addNode( toReteNode( graphNode ) );
+			await area.translate( graphNode.id, { x: position[ 0 ], y: position[ 1 ] } );
+			syncGraphFromEditor();
+		}
+
+		async function removeNode( id ) {
+			const connectionsToRemove = nodeEditor.getConnections().filter( ( c ) => c.source === id || c.target === id );
+			for ( const c of connectionsToRemove ) await nodeEditor.removeConnection( c.id );
+			await nodeEditor.removeNode( id );
+			graphNodesById.delete( id );
+			watchElements.delete( id );
+			syncGraphFromEditor();
+		}
+
+		async function loadGraph( graph ) {
+			for ( const graphNode of graph.nodes ) {
+				graphNodesById.set( graphNode.id, graphNode );
+				await nodeEditor.addNode( toReteNode( graphNode ) );
+				const pos = graphNode.position || [ 0, 0 ];
+				await area.translate( graphNode.id, { x: pos[ 0 ], y: pos[ 1 ] } );
+			}
+
+			// See loadGraph() in ReteGraphWindow.js for why this frame-wait is needed -
+			// AreaPlugin's node/socket render events are fire-and-forget, so connections
+			// added immediately after addNode() can't find their socket DOM elements yet.
+			await new Promise( ( resolve ) => requestAnimationFrame( resolve ) );
+
+			const loadedConnectionIds = [];
+			for ( const c of graph.connections ) {
+				if ( ! graphNodesById.has( c.source ) || ! graphNodesById.has( c.target ) ) {
+					console.warn( 'Rete standalone: connection skipped at load, endpoint node not found', c );
+					continue;
+				}
+				try {
+					await nodeEditor.addConnection( c );
+					loadedConnectionIds.push( c.id );
+				} catch ( err ) {
+					console.warn( 'Rete standalone: addConnection() threw while loading', c, err );
+				}
+			}
+
+			await new Promise( ( resolve ) => requestAnimationFrame( resolve ) );
+			for ( const id of loadedConnectionIds ) await area.update( 'connection', id );
+
+			currentGraph = graph;
+		}
+
+		addButton.addEventListener( 'click', () => addNode( addSelect.value ) );
+
+		saveButton.addEventListener( 'click', () => {
+			setStatus( 'Saving…', 'saving' );
+			fetch( `/wp-json/wp/v2/vr-scenes/${ sceneId }?acf_format=standard`, {
+				method: 'POST',
+				credentials: 'same-origin',
+				headers: {
+					'Content-Type': 'application/json;charset=UTF-8',
+					'X-WP-Nonce': nonce,
+				},
+				body: JSON.stringify( { acf: { rete_graph: JSON.stringify( currentGraph ) } } ),
+			} )
+				.then( ( response ) => {
+					if ( ! response.ok ) throw new Error( 'HTTP ' + response.status );
+					return response.json();
+				} )
+				.then( () => {
+					dirty = false;
+					setStatus( 'All changes saved' );
+				} )
+				.catch( ( err ) => {
+					console.error( 'Rete standalone: save failed', err );
+					setStatus( 'Save failed - see console', 'error' );
+				} );
+		} );
+
+		window.addEventListener( 'beforeunload', ( event ) => {
+			if ( ! dirty ) return;
+			event.preventDefault();
+			event.returnValue = '';
+		} );
+
+		setStatus( 'Loading…' );
+		fetch( `/wp-json/wp/v2/vr-scenes/${ sceneId }?acf_format=standard` )
+			.then( ( response ) => response.json() )
+			.then( async ( scene ) => {
+				const title = ( scene.title && scene.title.rendered ) || ( 'Scene ' + sceneId );
+				titleEl.textContent = title;
+				document.title = 'Rete Interactions - ' + title;
+				sceneObjects = buildSceneObjects( scene.acf || {} );
+				const parsed = parseReteGraph( scene.acf && scene.acf.rete_graph ) || { version: 1, nodes: [], connections: [] };
+				await loadGraph( parsed );
+				dirty = false;
+				setStatus( 'All changes saved' );
+			} )
+			.catch( ( err ) => {
+				console.error( 'Rete standalone: failed to load scene', err );
+				setStatus( 'Failed to load scene - see console', 'error' );
+			} );
+	</script>
+</body>
+</html>
