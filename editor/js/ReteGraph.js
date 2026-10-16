@@ -138,6 +138,11 @@ const NODE_DEFAULTS = {
 	'midi-input': { source: 'device', mode: 'note', channel: 0, number: 60 },
 	switch: { condition: false, ifTrue: 1, ifFalse: 0 },
 	'play-sample': { target_uuid: '' },
+	'midi-pair-react': {
+		source: 'sequence', mode: 'note', channel: 0,
+		rate: 6, threshold: 0.05, color_on: '#ffff00', color_off: '#ffffff',
+		pairs: [], // [{ uuid, number }] - the (object, MIDI note) list this node loops over
+	},
 };
 
 const NODE_TYPES = {
@@ -425,6 +430,50 @@ const NODE_TYPES = {
 			return {};
 		},
 	},
+	// Collapses the repeated "midi-input -> impulse -> damp -> compare -> switch ->
+	// property-set" + "play-sample" pattern (10 nodes per instance in the original
+	// Foundscape-emulation graph, 850 nodes total for ~85 instances) into ONE node that
+	// loops internally over an explicit (object uuid, MIDI note) list in its own data -
+	// no group/ACF schema dependency, the pair list IS the graph's own persisted JSON.
+	// Sink node like 'group-set' - see the special-cased dispatch in evaluateGraph() below.
+	'midi-pair-react': {
+		label: 'MIDI Pair React',
+		description: 'For each (object, MIDI note) pair, flashes the object\'s color_texture and plays its own audio_trigger sample when that note is hit.',
+		inputs: [],
+		outputs: [],
+		compute: ( data, getInput, context ) => {
+			const pairs = Array.isArray( data.pairs ) ? data.pairs : [];
+			const rate = Number( data.rate ) || 6;
+			const threshold = Number( data.threshold ) || 0.05;
+			const colorOn = data.color_on || '#ffff00';
+			const colorOff = data.color_off || '#ffffff';
+			const delta = Math.max( 0, Number( context.delta ) || 0 );
+			const t = 1 - Math.exp( - rate * delta );
+			if ( ! data._state ) data._state = {};
+
+			pairs.forEach( ( pair ) => {
+				if ( ! pair || ! pair.uuid ) return;
+				const reading = data.source === 'sequence'
+					? ( context.readMidiSequence ? context.readMidiSequence( data.mode, data.channel, pair.number ) : { value: 0, gate: false } )
+					: ( context.readMidi ? context.readMidi( data.mode, data.channel, pair.number ) : { value: 0, gate: false } );
+
+				const state = data._state[ pair.uuid ] || ( data._state[ pair.uuid ] = { damped: 0, prevGate: false } );
+				const gate = !! reading.gate;
+				const rising = gate && ! state.prevGate;
+				state.prevGate = gate;
+				const target = rising ? 1 : 0;
+				state.damped = state.damped + ( target - state.damped ) * t;
+
+				context.applyProperty( pair.uuid, 'color_texture', state.damped > threshold ? colorOn : colorOff );
+
+				if ( rising && context.playSample ) {
+					context.playSample( pair.uuid, Number( reading.value ) * 127 );
+				}
+			} );
+
+			return {};
+		},
+	},
 };
 
 // Re-evaluates the small dependency chain feeding ONE input socket using its OWN fresh
@@ -513,7 +562,7 @@ function evaluateGraph( graph, context ) {
 	}
 
 	graph.nodes.forEach( ( n ) => {
-		if ( n.type === 'property-set' || n.type === 'watch' || n.type === 'play-sample' ) {
+		if ( n.type === 'property-set' || n.type === 'watch' || n.type === 'play-sample' || n.type === 'midi-pair-react' ) {
 			computeNode( n.id );
 		} else if ( n.type === 'group-set' ) {
 			const members = context.getGroupMembers ? context.getGroupMembers( n.data.group_uuid ) : [];

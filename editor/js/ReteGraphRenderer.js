@@ -389,6 +389,122 @@ function renderNodeControls( body, node, hooks ) {
 		row.appendChild( el( 'span', 'rete-node-description', '(no sound in editor preview)' ) );
 		body.appendChild( row );
 	}
+
+	if ( node.type === 'midi-pair-react' ) {
+		const configRow = el( 'div', 'rete-node-controls' );
+		configRow.appendChild( select( [ 'device', 'sequence' ], node.data.source || 'sequence', ( v ) => {
+			node.data.source = v;
+			hooks.onNodeDataChanged( node );
+		} ) );
+		configRow.appendChild( select( [ 'note', 'cc' ], node.data.mode, ( v ) => {
+			node.data.mode = v;
+			hooks.onNodeDataChanged( node );
+		} ) );
+
+		const numberControl = ( title, key, value ) => {
+			const input = document.createElement( 'input' );
+			input.className = 'rete-inline-control';
+			input.type = 'number';
+			input.step = 'any';
+			input.title = title;
+			input.value = value;
+			input.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+			input.addEventListener( 'change', () => {
+				node.data[ key ] = Number( input.value ) || 0;
+				hooks.onNodeDataChanged( node );
+			} );
+			return input;
+		};
+		configRow.appendChild( numberControl( 'MIDI channel (0 = any)', 'channel', node.data.channel || 0 ) );
+		configRow.appendChild( numberControl( 'Decay rate', 'rate', node.data.rate ?? 6 ) );
+		configRow.appendChild( numberControl( 'Flash threshold', 'threshold', node.data.threshold ?? 0.05 ) );
+
+		const colorControl = ( title, key, value ) => {
+			const input = document.createElement( 'input' );
+			input.type = 'color';
+			input.title = title;
+			input.value = value || '#ffffff';
+			input.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+			input.addEventListener( 'change', () => {
+				node.data[ key ] = input.value;
+				hooks.onNodeDataChanged( node );
+			} );
+			return input;
+		};
+		configRow.appendChild( colorControl( 'Flash color', 'color_on', node.data.color_on || '#ffff00' ) );
+		configRow.appendChild( colorControl( 'Rest color', 'color_off', node.data.color_off || '#ffffff' ) );
+		body.appendChild( configRow );
+
+		const listContainer = el( 'div', 'rete-pair-list' );
+		body.appendChild( listContainer );
+
+		function renderPairs() {
+			listContainer.innerHTML = '';
+			if ( ! Array.isArray( node.data.pairs ) ) node.data.pairs = [];
+			node.data.pairs.forEach( ( pair, index ) => {
+				const pairRow = el( 'div', 'rete-pair-row' );
+
+				const objectSelect = document.createElement( 'select' );
+				objectSelect.className = 'rete-inline-select';
+				const blankOption = document.createElement( 'option' );
+				blankOption.value = '';
+				blankOption.textContent = '(select object)';
+				objectSelect.appendChild( blankOption );
+				hooks.getSceneObjects().forEach( ( obj ) => {
+					const option = document.createElement( 'option' );
+					option.value = obj.uuid;
+					option.textContent = obj.name || obj.type;
+					if ( obj.uuid === pair.uuid ) option.selected = true;
+					objectSelect.appendChild( option );
+				} );
+				objectSelect.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+				objectSelect.addEventListener( 'change', () => {
+					pair.uuid = objectSelect.value;
+					hooks.onNodeDataChanged( node );
+				} );
+				pairRow.appendChild( objectSelect );
+
+				const noteInput = document.createElement( 'input' );
+				noteInput.className = 'rete-inline-control';
+				noteInput.type = 'number';
+				noteInput.title = 'Note or CC number (0-127)';
+				noteInput.min = '0';
+				noteInput.max = '127';
+				noteInput.value = pair.number || 0;
+				noteInput.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+				noteInput.addEventListener( 'change', () => {
+					pair.number = Number( noteInput.value ) || 0;
+					hooks.onNodeDataChanged( node );
+				} );
+				pairRow.appendChild( noteInput );
+
+				const removeBtn = el( 'span', 'rete-node-remove', '\u00d7' );
+				removeBtn.title = 'Remove pair';
+				removeBtn.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+				removeBtn.addEventListener( 'click', () => {
+					node.data.pairs.splice( index, 1 );
+					hooks.onNodeDataChanged( node );
+					renderPairs();
+				} );
+				pairRow.appendChild( removeBtn );
+
+				listContainer.appendChild( pairRow );
+			} );
+		}
+		renderPairs();
+
+		const addRow = el( 'div', 'rete-node-controls' );
+		const addButton = document.createElement( 'button' );
+		addButton.textContent = '+ Add pair';
+		addButton.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+		addButton.addEventListener( 'click', () => {
+			node.data.pairs.push( { uuid: '', number: 0 } );
+			hooks.onNodeDataChanged( node );
+			renderPairs();
+		} );
+		addRow.appendChild( addButton );
+		body.appendChild( addRow );
+	}
 }
 
 // Draws one connection as an SVG cubic-bezier path between its source/target socket

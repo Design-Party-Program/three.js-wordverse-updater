@@ -49,6 +49,8 @@ function injectStylesOnce() {
 		.rete-inline-control { width:56px; font-size:10px; }
 		.rete-inline-select { font-size:10px; }
 		.rete-watch-value { display:block; padding:4px 8px; font-family:monospace; font-size:11px; color:#8bc34a; word-break:break-all; }
+		.rete-pair-list { max-height:160px; overflow-y:auto; padding:0 8px; }
+		.rete-pair-row { display:flex; align-items:center; gap:4px; padding:2px 0; }
 		.rete-connection { position:absolute; top:0; left:0; pointer-events:none; }
 		.rete-connection-svg { position:absolute; overflow:visible; }
 		.rete-connection-path { fill:none; stroke:#9e9e9e; stroke-width:2px; }
