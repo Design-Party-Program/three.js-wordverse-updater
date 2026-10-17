@@ -430,6 +430,15 @@
                           sceneTexture:_validSceneId( vrSceneModel.scene_texture ),
                           group_uuid:vrSceneModel.group_uuid || null,
                           useAnimations: !! vrSceneModel.useAnimations,
+                          // Audio fields are read-shape {ID,url,...}|false from ACF - reduce to a
+                          // plain attachment id (or null) ONCE here so Editor.js/Save can round-trip
+                          // them as-is without re-deriving the ACF write-shape every time.
+                          audio_ambient: vrSceneModel.audio_ambient ? vrSceneModel.audio_ambient.ID : null,
+                          audio_trigger_s: vrSceneModel.audio_trigger_s ? vrSceneModel.audio_trigger_s.ID : null,
+                          audio_trigger_m: vrSceneModel.audio_trigger_m ? vrSceneModel.audio_trigger_m.ID : null,
+                          audio_trigger_l: vrSceneModel.audio_trigger_l ? vrSceneModel.audio_trigger_l.ID : null,
+                          audio_trigger_xl: vrSceneModel.audio_trigger_xl ? vrSceneModel.audio_trigger_xl.ID : null,
+                          audio_trigger_volume: Number( vrSceneModel.audio_trigger_volume ) || 100,
                           // name: vrSceneModelData.title.rendered
                       } ]
                     );

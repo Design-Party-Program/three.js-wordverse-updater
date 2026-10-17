@@ -119,6 +119,14 @@ function MenubarSaveButtons( editor ) {
               scene_texture: _pickTexture( model, 'sceneTexture' ),
               group_uuid: _groupUuidOf( model ),
               useAnimations: !! model.userData.useAnimations,
+              // Attachment id or null (NOT the {ID,url,...} read-shape) - see Editor.js's
+              // addObjectAndSetMeta, which stores these as-is from the loader's meta.
+              audio_ambient: model.userData.audio_ambient ?? null,
+              audio_trigger_s: model.userData.audio_trigger_s ?? null,
+              audio_trigger_m: model.userData.audio_trigger_m ?? null,
+              audio_trigger_l: model.userData.audio_trigger_l ?? null,
+              audio_trigger_xl: model.userData.audio_trigger_xl ?? null,
+              audio_trigger_volume: model.userData.audio_trigger_volume ?? 100,
             });
           }
 

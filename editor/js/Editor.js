@@ -309,6 +309,17 @@ Editor.prototype = {
       object.userData.useAnimations = !! meta.useAnimations;
       this.applyAnimationAutoplay( object );
 
+      // Audio fields (no editor UI to set these yet - they're authored via direct
+      // REST/ACF today) - round-tripped through userData so Save doesn't silently
+      // wipe them on the next save, same bug class useAnimations above just fixed.
+      // Already reduced to plain attachment-id-or-null by index.html's loader.
+      if ( meta.audio_ambient !== undefined ) object.userData.audio_ambient = meta.audio_ambient;
+      if ( meta.audio_trigger_s !== undefined ) object.userData.audio_trigger_s = meta.audio_trigger_s;
+      if ( meta.audio_trigger_m !== undefined ) object.userData.audio_trigger_m = meta.audio_trigger_m;
+      if ( meta.audio_trigger_l !== undefined ) object.userData.audio_trigger_l = meta.audio_trigger_l;
+      if ( meta.audio_trigger_xl !== undefined ) object.userData.audio_trigger_xl = meta.audio_trigger_xl;
+      if ( meta.audio_trigger_volume !== undefined ) object.userData.audio_trigger_volume = meta.audio_trigger_volume;
+
 		} else {
 
 			parent.children.splice( index, 0, object );

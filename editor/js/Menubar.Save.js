@@ -88,6 +88,12 @@ function MenubarSave( editor ) {
               scene_texture: model.userData.sceneTexture || "",
               group_uuid: _groupUuidOf( model ),
               useAnimations: !! model.userData.useAnimations,
+              audio_ambient: model.userData.audio_ambient ?? null,
+              audio_trigger_s: model.userData.audio_trigger_s ?? null,
+              audio_trigger_m: model.userData.audio_trigger_m ?? null,
+              audio_trigger_l: model.userData.audio_trigger_l ?? null,
+              audio_trigger_xl: model.userData.audio_trigger_xl ?? null,
+              audio_trigger_volume: model.userData.audio_trigger_volume ?? 100,
             });
           }
 
