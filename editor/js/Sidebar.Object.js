@@ -399,6 +399,24 @@ function SidebarObject( editor ) {
 
 	container.add( objectUserDataRow );
 
+	// ─── WordVerse Animations (only shown for objects with embedded GLTF/FBX clips) ──
+
+	const objectAnimationsListRow = new UIRow();
+	const objectAnimationsList = new UIText( '' ).setFontSize( '11px' ).setColor( '#aaa' );
+	objectAnimationsListRow.add( new UIText( 'Animations' ).setClass( 'Label' ) );
+	objectAnimationsListRow.add( objectAnimationsList );
+	container.add( objectAnimationsListRow );
+
+	const objectAutoplayAnimationRow = new UIRow();
+	const objectAutoplayAnimationCheckbox = new UICheckbox( false ).onChange( function () {
+		editor.selected.userData.useAnimations = objectAutoplayAnimationCheckbox.getValue();
+		editor.applyAnimationAutoplay( editor.selected );
+		editor.signals.sceneGraphChanged.dispatch();
+	} );
+	objectAutoplayAnimationRow.add( new UIText( 'Autoplay Animation' ).setClass( 'Label' ) );
+	objectAutoplayAnimationRow.add( objectAutoplayAnimationCheckbox );
+	container.add( objectAutoplayAnimationRow );
+
 	// ─── WordVerse Texture ─────────────────────────────────────────────────────
 
 	const objectWvSectionRow = new UIRow();
@@ -1141,6 +1159,10 @@ function SidebarObject( editor ) {
 
 		objectDefaultCameraRow.setDisplay( object.isCamera ? '' : 'none' );
 
+		const _hasAnimations = !! ( object.animations && object.animations.length );
+		objectAnimationsListRow.setDisplay( _hasAnimations ? '' : 'none' );
+		objectAutoplayAnimationRow.setDisplay( _hasAnimations ? '' : 'none' );
+
 		//
 
 		if ( object.isLight ) {
@@ -1214,6 +1236,13 @@ function SidebarObject( editor ) {
 
 		objectUUID.setValue( object.uuid );
 		objectName.setValue( object.name );
+
+		if ( object.animations && object.animations.length ) {
+
+			objectAnimationsList.setValue( object.animations.map( function ( clip ) { return clip.name || '(unnamed)'; } ).join( ', ' ) );
+			objectAutoplayAnimationCheckbox.setValue( !! object.userData.useAnimations );
+
+		}
 
 		objectPositionX.setValue( object.position.x );
 		objectPositionY.setValue( object.position.y );

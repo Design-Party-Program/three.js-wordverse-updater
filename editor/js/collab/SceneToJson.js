@@ -78,6 +78,7 @@
               colorTexture: model.userData.colorTexture || "",
               sceneTexture: model.userData.sceneTexture || "",
               group_uuid: _groupUuidOf( model ),
+              useAnimations: !! model.userData.useAnimations,
             });
           }
 

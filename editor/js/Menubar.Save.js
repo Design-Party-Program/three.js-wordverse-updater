@@ -87,6 +87,7 @@ function MenubarSave( editor ) {
               color_texture: model.userData.colorTexture || "",
               scene_texture: model.userData.sceneTexture || "",
               group_uuid: _groupUuidOf( model ),
+              useAnimations: !! model.userData.useAnimations,
             });
           }
 

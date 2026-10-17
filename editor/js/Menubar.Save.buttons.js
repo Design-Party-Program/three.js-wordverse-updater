@@ -118,6 +118,7 @@ function MenubarSaveButtons( editor ) {
               color_texture: _pickTexture( model, 'colorTexture' ),
               scene_texture: _pickTexture( model, 'sceneTexture' ),
               group_uuid: _groupUuidOf( model ),
+              useAnimations: !! model.userData.useAnimations,
             });
           }
 

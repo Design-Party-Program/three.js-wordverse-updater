@@ -302,6 +302,13 @@ Editor.prototype = {
 
       this.applyWvTexture( object, meta );
 
+      // Autoplay first embedded animation (Sidebar.Object.js "Autoplay Animation"
+      // toggle) - persists the flag then starts/stops editor.mixer's existing
+      // scene-wide AnimationMixer accordingly (already ticked every frame in
+      // Viewport.js's animate(), just never driven by anything until now).
+      object.userData.useAnimations = !! meta.useAnimations;
+      this.applyAnimationAutoplay( object );
+
 		} else {
 
 			parent.children.splice( index, 0, object );
@@ -311,6 +318,25 @@ Editor.prototype = {
 
 		this.signals.objectAdded.dispatch( object );
 		this.signals.sceneGraphChanged.dispatch();
+
+	},
+
+	// Starts/stops `object.animations[0]` on the shared `this.mixer` (already ticked
+	// every frame in Viewport.js's animate(), previously never driven by anything -
+	// `mixer.clipAction()` caches by (clip, object), so calling this again is a cheap
+	// no-op/resume rather than creating duplicate actions) based on
+	// `object.userData.useAnimations`. No-op if the object has no embedded clips.
+	applyAnimationAutoplay: function ( object ) {
+
+		if ( ! object || ! object.animations || ! object.animations.length ) return;
+
+		const action = this.mixer.clipAction( object.animations[ 0 ], object );
+
+		if ( object.userData.useAnimations ) {
+			action.reset().play();
+		} else {
+			action.stop();
+		}
 
 	},
 
