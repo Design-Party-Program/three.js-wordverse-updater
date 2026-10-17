@@ -12,6 +12,20 @@
       const _groupUuidOf = ( model ) =>
         ( model.parent && model.parent.userData && model.parent.userData.wvIsGroupContainer ) ? model.parent.uuid : "";
 
+      // See Menubar.Save.buttons.js for why this reuses the existing properties_json field.
+      const _serializeLightProperties = ( model ) => {
+        const props = {};
+        if ( model.color ) props.color = '#' + model.color.getHexString();
+        if ( model.groundColor ) props.groundColor = '#' + model.groundColor.getHexString();
+        if ( model.intensity !== undefined ) props.intensity = model.intensity;
+        if ( model.distance !== undefined ) props.distance = model.distance;
+        if ( model.angle !== undefined ) props.angle = model.angle;
+        if ( model.penumbra !== undefined ) props.penumbra = model.penumbra;
+        if ( model.decay !== undefined ) props.decay = model.decay;
+        if ( model.castShadow !== undefined ) props.castShadow = model.castShadow;
+        return JSON.stringify( props );
+      };
+
       const walk = ( model ) => {
 
         if ( model.userData && model.userData.wvIsGroupContainer ) {
@@ -124,6 +138,7 @@
                 z: model.rotation._z
               },
               group_uuid: _groupUuidOf( model ),
+              properties_json: _serializeLightProperties( model ),
             } )
           }
 

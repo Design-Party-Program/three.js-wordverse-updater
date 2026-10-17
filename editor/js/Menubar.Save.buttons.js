@@ -52,6 +52,23 @@ function MenubarSaveButtons( editor ) {
       const _groupUuidOf = ( model ) =>
         ( model.parent && model.parent.userData && model.parent.userData.wvIsGroupContainer ) ? model.parent.uuid : "";
 
+      // Lights have no dedicated ACF sub-fields for intensity/color/etc. (only type/
+      // position/rotation/scale) - reuses the existing (previously unused) free-text
+      // `properties_json` field instead of adding new ACF schema, so no re-import needed.
+      // Only includes properties the live THREE.Light subtype actually has.
+      const _serializeLightProperties = ( model ) => {
+        const props = {};
+        if ( model.color ) props.color = '#' + model.color.getHexString();
+        if ( model.groundColor ) props.groundColor = '#' + model.groundColor.getHexString();
+        if ( model.intensity !== undefined ) props.intensity = model.intensity;
+        if ( model.distance !== undefined ) props.distance = model.distance;
+        if ( model.angle !== undefined ) props.angle = model.angle;
+        if ( model.penumbra !== undefined ) props.penumbra = model.penumbra;
+        if ( model.decay !== undefined ) props.decay = model.decay;
+        if ( model.castShadow !== undefined ) props.castShadow = model.castShadow;
+        return JSON.stringify( props );
+      };
+
       const walk = ( model ) => {
 
         if ( model.userData && model.userData.wvIsGroupContainer ) {
@@ -166,6 +183,7 @@ function MenubarSaveButtons( editor ) {
                 z: model.rotation._z
               },
               group_uuid: _groupUuidOf( model ),
+              properties_json: _serializeLightProperties( model ),
             } )
           }
 

@@ -343,6 +343,24 @@
         );
 
         let light = false;
+        // Lights have no dedicated ACF sub-fields for intensity/color/etc. - see
+        // Menubar.Save.buttons.js's _serializeLightProperties, which writes these into the
+        // existing (previously unused) free-text `properties_json` field. Constructor
+        // defaults below stay as a sane fallback for lights saved before this existed.
+        const _applyLightProperties = ( targetLight, propertiesJson ) => {
+          if ( ! propertiesJson ) return;
+          let props;
+          try { props = JSON.parse( propertiesJson ); } catch ( e ) { return; }
+          if ( ! props || typeof props !== 'object' ) return;
+          if ( props.color !== undefined && targetLight.color ) targetLight.color.set( props.color );
+          if ( props.groundColor !== undefined && targetLight.groundColor ) targetLight.groundColor.set( props.groundColor );
+          if ( props.intensity !== undefined ) targetLight.intensity = props.intensity;
+          if ( props.distance !== undefined ) targetLight.distance = props.distance;
+          if ( props.angle !== undefined ) targetLight.angle = props.angle;
+          if ( props.penumbra !== undefined ) targetLight.penumbra = props.penumbra;
+          if ( props.decay !== undefined ) targetLight.decay = props.decay;
+          if ( props.castShadow !== undefined ) targetLight.castShadow = !! props.castShadow;
+        };
         vrSceneData.acf.lights && vrSceneData.acf.lights.map(lightProps => {
             console.log("lightProps", lightProps);
             if (lightProps.type === 'AmbientLight'){
@@ -377,6 +395,8 @@
             } else {
               light = false;
             }
+
+            if ( light ) _applyLightProperties( light, lightProps.properties_json );
 
             const primProps = {
                 wpData: {
