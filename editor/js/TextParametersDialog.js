@@ -246,5 +246,5 @@ function createRow( label, ...inputs ) {
 
 }
 
-export { TextParametersDialog };
+export { TextParametersDialog, FONT_MIME_TYPES };
 

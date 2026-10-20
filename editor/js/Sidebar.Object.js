@@ -11,8 +11,8 @@ import { SetScaleCommand } from './commands/SetScaleCommand.js';
 import { SetColorCommand } from './commands/SetColorCommand.js';
 import { SetShadowValueCommand } from './commands/SetShadowValueCommand.js';
 import { SetGeometryCommand } from './commands/SetGeometryCommand.js';
-import { ExtrudeMeshFromFont } from './libs/ExtrudeMeshFromFont.js';
-import { TextParametersDialog } from './TextParametersDialog.js';
+import { ExtrudeMeshFromFont, parseFontBuffer } from './libs/ExtrudeMeshFromFont.js';
+import { FONT_MIME_TYPES } from './TextParametersDialog.js';
 
 function SidebarObject( editor ) {
 
@@ -421,59 +421,216 @@ function SidebarObject( editor ) {
 	container.add( objectAutoplayAnimationRow );
 
 	// ─── WordVerse 3D Text (only shown for text-3d objects, see Menubar.Text.js) ──
+	// Every field here edits live + rebuilds immediately, same UX as the regular
+	// position/rotation/scale rows above - no separate modal, unlike object creation
+	// (Menubar.Text.js), which still uses TextParametersDialog since there's no object
+	// yet to attach inline fields to.
 
-	const objectTextRow = new UIRow();
-	const objectTextEditButton = new UIButton( 'Edit Text...' ).onClick( async function () {
+	const objectTextSectionRow = new UIRow();
+	objectTextSectionRow.dom.style.cssText = 'border-top:1px solid #555;margin-top:8px;padding-top:6px;';
+	objectTextSectionRow.add( new UIText( '3D Text' ).setWidth( '90px' ).setFontSize( '11px' ).setColor( '#aaa' ) );
+	const objectTextRows = [ objectTextSectionRow ];
+	container.add( objectTextSectionRow );
+
+	// Caches the parsed opentype.js Font per-object (keyed by uuid) so dragging/
+	// editing size/depth/align/etc. rebuilds instantly without re-fetching the font
+	// file on every change - only "Change Font..." (or switching to a different
+	// text-3d object) invalidates it.
+	let _cachedFont = null;
+	let _cachedFontUuid = null;
+
+	function _getCachedFont( object ) {
+
+		if ( _cachedFontUuid === object.uuid && _cachedFont ) return Promise.resolve( _cachedFont );
+
+		return fetch( '' + object.userData.wpData.source_url )
+			.then( ( fontFile ) => fontFile.arrayBuffer() )
+			.then( ( fontBuffer ) => {
+
+				_cachedFont = parseFontBuffer( fontBuffer );
+				_cachedFontUuid = object.uuid;
+				return _cachedFont;
+
+			} );
+
+	}
+
+	function _rebuildTextObject() {
 
 		const object = editor.selected;
 		const wpData = object.userData.wpData;
 		const mesh = object.children[ 0 ];
 		if ( ! wpData || ! mesh ) return;
 
-		let result;
+		_getCachedFont( object ).then( ( font ) => {
+
+			const rebuilt = ExtrudeMeshFromFont( font, wpData.text, wpData );
+			editor.execute( new SetGeometryCommand( editor, mesh, rebuilt.children[ 0 ].geometry ) );
+			object.name = `${wpData.text} (3D Text)`;
+			editor.signals.sceneGraphChanged.dispatch();
+
+		} );
+
+	}
+
+	const objectTextFontRow = new UIRow();
+	const objectTextFontButton = new UIButton( 'Change Font...' ).setMarginRight( '4px' );
+	const objectTextFontLabel = new UIText( '' ).setFontSize( '11px' ).setColor( '#aaa' );
+	objectTextFontButton.onClick( function () {
+
 		try {
-			result = await new TextParametersDialog( editor, {
-				fontId: wpData.id,
-				fontUrl: wpData.source_url,
-				text: wpData.text,
-				size: wpData.size,
-				depth: wpData.depth,
-				bevelEnabled: wpData.bevelEnabled,
-				align: wpData.align,
-				maxWidth: wpData.maxWidth,
-				wordWrap: wpData.wordWrap,
-				letterSpacing: wpData.letterSpacing,
-				lineHeight: wpData.lineHeight,
-				kerning: wpData.kerning,
-			}, 'Edit 3D Text' ).show();
+
+			const frame = parent.wp.media( {
+				title: 'Select Font',
+				button: { text: 'Use this font' },
+				multiple: false,
+				library: { type: FONT_MIME_TYPES },
+			} );
+			frame.on( 'select', function () {
+
+				const att = frame.state().get( 'selection' ).first().toJSON();
+				const wpData = editor.selected.userData.wpData;
+				wpData.id = att.id;
+				wpData.source_url = att.url;
+				_cachedFont = null; // force a refetch with the new font
+				objectTextFontLabel.setValue( att.filename || att.title || '' );
+				_rebuildTextObject();
+
+			} );
+			frame.open();
+
 		} catch ( e ) {
-			return; // dialog cancelled
+
+			console.warn( 'WP media picker unavailable:', e );
+
 		}
 
-		const rebuilt = ExtrudeMeshFromFont( result.font, result.text, result );
-		editor.execute( new SetGeometryCommand( editor, mesh, rebuilt.children[ 0 ].geometry ) );
+	} );
+	objectTextFontRow.add( new UIText( 'Font' ).setClass( 'Label' ) );
+	objectTextFontRow.add( objectTextFontButton );
+	objectTextFontRow.add( objectTextFontLabel );
+	objectTextRows.push( objectTextFontRow );
+	container.add( objectTextFontRow );
 
-		Object.assign( wpData, {
-			id: result.fontId,
-			source_url: result.fontUrl,
-			text: result.text,
-			size: result.size,
-			depth: result.depth,
-			bevelEnabled: result.bevelEnabled,
-			align: result.align,
-			maxWidth: result.maxWidth,
-			wordWrap: result.wordWrap,
-			letterSpacing: result.letterSpacing,
-			lineHeight: result.lineHeight,
-			kerning: result.kerning,
-		} );
-		object.name = `${result.text} (3D Text)`;
-		editor.signals.sceneGraphChanged.dispatch();
+	const objectTextRow = new UIRow();
+	const objectTextInput = new UITextArea().setWidth( '150px' ).setHeight( '40px' ).onChange( function () {
+
+		editor.selected.userData.wpData.text = objectTextInput.getValue() || 'Hello';
+		_rebuildTextObject();
 
 	} );
 	objectTextRow.add( new UIText( 'Text' ).setClass( 'Label' ) );
-	objectTextRow.add( objectTextEditButton );
+	objectTextRow.add( objectTextInput );
+	objectTextRows.push( objectTextRow );
 	container.add( objectTextRow );
+
+	const objectTextSizeRow = new UIRow();
+	const objectTextSize = new UINumber( 1 ).setRange( 0.01, 1000 ).setWidth( '60px' ).onChange( function () {
+
+		editor.selected.userData.wpData.size = objectTextSize.getValue();
+		_rebuildTextObject();
+
+	} );
+	objectTextSizeRow.add( new UIText( 'Size' ).setClass( 'Label' ) );
+	objectTextSizeRow.add( objectTextSize );
+	objectTextRows.push( objectTextSizeRow );
+	container.add( objectTextSizeRow );
+
+	const objectTextDepthRow = new UIRow();
+	const objectTextDepth = new UINumber( 0.2 ).setRange( 0, 1000 ).setWidth( '60px' ).onChange( function () {
+
+		editor.selected.userData.wpData.depth = objectTextDepth.getValue();
+		_rebuildTextObject();
+
+	} );
+	objectTextDepthRow.add( new UIText( 'Depth' ).setClass( 'Label' ) );
+	objectTextDepthRow.add( objectTextDepth );
+	objectTextRows.push( objectTextDepthRow );
+	container.add( objectTextDepthRow );
+
+	const objectTextBevelRow = new UIRow();
+	const objectTextBevel = new UICheckbox( false ).onChange( function () {
+
+		editor.selected.userData.wpData.bevelEnabled = objectTextBevel.getValue();
+		_rebuildTextObject();
+
+	} );
+	objectTextBevelRow.add( new UIText( 'Bevel' ).setClass( 'Label' ) );
+	objectTextBevelRow.add( objectTextBevel );
+	objectTextRows.push( objectTextBevelRow );
+	container.add( objectTextBevelRow );
+
+	const objectTextAlignRow = new UIRow();
+	const objectTextAlign = new UISelect().setOptions( { left: 'Left', center: 'Center', right: 'Right' } ).onChange( function () {
+
+		editor.selected.userData.wpData.align = objectTextAlign.getValue();
+		_rebuildTextObject();
+
+	} );
+	objectTextAlignRow.add( new UIText( 'Align' ).setClass( 'Label' ) );
+	objectTextAlignRow.add( objectTextAlign );
+	objectTextRows.push( objectTextAlignRow );
+	container.add( objectTextAlignRow );
+
+	const objectTextMaxWidthRow = new UIRow();
+	const objectTextMaxWidth = new UINumber( 0 ).setRange( 0, 100000 ).setWidth( '60px' ).onChange( function () {
+
+		editor.selected.userData.wpData.maxWidth = objectTextMaxWidth.getValue();
+		_rebuildTextObject();
+
+	} );
+	objectTextMaxWidthRow.add( new UIText( 'Max Width' ).setClass( 'Label' ) );
+	objectTextMaxWidthRow.add( objectTextMaxWidth );
+	objectTextRows.push( objectTextMaxWidthRow );
+	container.add( objectTextMaxWidthRow );
+
+	const objectTextWordWrapRow = new UIRow();
+	const objectTextWordWrap = new UICheckbox( true ).onChange( function () {
+
+		editor.selected.userData.wpData.wordWrap = objectTextWordWrap.getValue();
+		_rebuildTextObject();
+
+	} );
+	objectTextWordWrapRow.add( new UIText( 'Word Wrap' ).setClass( 'Label' ) );
+	objectTextWordWrapRow.add( objectTextWordWrap );
+	objectTextRows.push( objectTextWordWrapRow );
+	container.add( objectTextWordWrapRow );
+
+	const objectTextLetterSpacingRow = new UIRow();
+	const objectTextLetterSpacing = new UINumber( 0 ).setRange( -1000, 1000 ).setWidth( '60px' ).onChange( function () {
+
+		editor.selected.userData.wpData.letterSpacing = objectTextLetterSpacing.getValue();
+		_rebuildTextObject();
+
+	} );
+	objectTextLetterSpacingRow.add( new UIText( 'Letter Spacing' ).setClass( 'Label' ) );
+	objectTextLetterSpacingRow.add( objectTextLetterSpacing );
+	objectTextRows.push( objectTextLetterSpacingRow );
+	container.add( objectTextLetterSpacingRow );
+
+	const objectTextLineHeightRow = new UIRow();
+	const objectTextLineHeight = new UINumber( 1.2 ).setRange( 0, 10 ).setPrecision( 2 ).setWidth( '60px' ).onChange( function () {
+
+		editor.selected.userData.wpData.lineHeight = objectTextLineHeight.getValue();
+		_rebuildTextObject();
+
+	} );
+	objectTextLineHeightRow.add( new UIText( 'Line Height' ).setClass( 'Label' ) );
+	objectTextLineHeightRow.add( objectTextLineHeight );
+	objectTextRows.push( objectTextLineHeightRow );
+	container.add( objectTextLineHeightRow );
+
+	const objectTextKerningRow = new UIRow();
+	const objectTextKerning = new UICheckbox( true ).onChange( function () {
+
+		editor.selected.userData.wpData.kerning = objectTextKerning.getValue();
+		_rebuildTextObject();
+
+	} );
+	objectTextKerningRow.add( new UIText( 'Kerning' ).setClass( 'Label' ) );
+	objectTextKerningRow.add( objectTextKerning );
+	objectTextRows.push( objectTextKerningRow );
+	container.add( objectTextKerningRow );
 
 	// ─── WordVerse Texture ─────────────────────────────────────────────────────
 
@@ -1218,7 +1375,7 @@ function SidebarObject( editor ) {
 		objectDefaultCameraRow.setDisplay( object.isCamera ? '' : 'none' );
 
 		const _isText3D = !! ( object.userData.wpData && object.userData.wpData.type === 'text-3d' );
-		objectTextRow.setDisplay( _isText3D ? '' : 'none' );
+		objectTextRows.forEach( ( row ) => row.setDisplay( _isText3D ? '' : 'none' ) );
 
 		const _hasAnimations = !! ( object.animations && object.animations.length );
 		objectAnimationsListRow.setDisplay( _hasAnimations ? '' : 'none' );
@@ -1302,6 +1459,23 @@ function SidebarObject( editor ) {
 
 			objectAnimationsList.setValue( object.animations.map( function ( clip ) { return clip.name || '(unnamed)'; } ).join( ', ' ) );
 			objectAutoplayAnimationCheckbox.setValue( !! object.userData.useAnimations );
+
+		}
+
+		if ( object.userData.wpData && object.userData.wpData.type === 'text-3d' ) {
+
+			const wpData = object.userData.wpData;
+			objectTextFontLabel.setValue( wpData.source_url ? wpData.source_url.split( '/' ).pop() : '' );
+			objectTextInput.setValue( wpData.text || '' );
+			objectTextSize.setValue( wpData.size !== undefined ? wpData.size : 1 );
+			objectTextDepth.setValue( wpData.depth !== undefined ? wpData.depth : 0.2 );
+			objectTextBevel.setValue( !! wpData.bevelEnabled );
+			objectTextAlign.setValue( wpData.align || 'left' );
+			objectTextMaxWidth.setValue( wpData.maxWidth !== undefined ? wpData.maxWidth : 0 );
+			objectTextWordWrap.setValue( wpData.wordWrap !== false );
+			objectTextLetterSpacing.setValue( wpData.letterSpacing !== undefined ? wpData.letterSpacing : 0 );
+			objectTextLineHeight.setValue( wpData.lineHeight !== undefined ? wpData.lineHeight : 1.2 );
+			objectTextKerning.setValue( wpData.kerning !== false );
 
 		}
 
