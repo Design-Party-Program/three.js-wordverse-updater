@@ -139,6 +139,7 @@ const NODE_DEFAULTS = {
 	color: { hex: '#ffffff' },
 	'property-get': { target_uuid: '', property: 'position.y' },
 	'property-set': { target_uuid: '', property: 'position.y', loop_id: '' },
+	'text-set': { target_uuid: '', text: '' },
 	compare: { op: 'gt', a: 0, b: 0 },
 	logic: { op: 'and', a: false, b: false },
 	'flip-flop': { trigger: false },
@@ -260,6 +261,20 @@ const NODE_TYPES = {
 		outputs: [],
 		compute: ( data, getInput, context ) => {
 			context.applyProperty( getInput( 'target_uuid' ), data.property, getInput( 'value' ) );
+			return {};
+		},
+	},
+	'text-set': {
+		label: 'Set Text',
+		description: 'Rewrites a 3D Text object\'s string (only re-extrudes the geometry when the text actually changes - wireable target_uuid, leave unwired to use the dropdown).',
+		inputs: [ 'text', 'target_uuid' ],
+		outputs: [],
+		compute: ( data, getInput, context ) => {
+			const text = String( getInput( 'text' ) ?? '' );
+			if ( text !== data._lastAppliedText ) {
+				data._lastAppliedText = text;
+				context.setObjectText( getInput( 'target_uuid' ), text );
+			}
 			return {};
 		},
 	},
@@ -617,7 +632,7 @@ function evaluateGraph( graph, context ) {
 		// themselves a sink type.
 		if ( n.data && n.data.loop_id ) return;
 
-		if ( n.type === 'property-set' || n.type === 'watch' || n.type === 'play-sample' ) {
+		if ( n.type === 'property-set' || n.type === 'watch' || n.type === 'play-sample' || n.type === 'text-set' ) {
 			computeNode( n.id );
 		} else if ( n.type === 'group-set' ) {
 			const members = context.getGroupMembers ? context.getGroupMembers( n.data.group_uuid ) : [];

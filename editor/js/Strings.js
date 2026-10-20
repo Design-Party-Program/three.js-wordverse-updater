@@ -462,6 +462,7 @@ function Strings( config ) {
 			'menubar/save': 'Save Scene',
       
 			'menubar/3dsvg': 'Add 3D SVGs',
+			'menubar/3dtext': 'Add 3D Text',
 
 			'menubar/wpcomponents': 'Add WP Content Elements',
 

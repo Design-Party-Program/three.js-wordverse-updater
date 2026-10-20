@@ -120,6 +120,16 @@
 			pushAll( acf.models );
 			pushAll( acf.primitives );
 			pushAll( acf.svg_models );
+			( acf.text_models || [] ).forEach( ( entry ) => {
+				if ( ! entry || ! entry.uuid ) return;
+				list.push( {
+					uuid: entry.uuid,
+					name: entry.name || entry.text || '',
+					isCamera: false,
+					isLight: false,
+					userData: { wvIsGroupContainer: false, wpData: { type: 'text-3d' } },
+				} );
+			} );
 			pushAll( acf.cameras, true, false );
 			pushAll( acf.lights, false, true );
 			( acf.groups || [] ).forEach( ( entry ) => {

@@ -19,6 +19,7 @@ import {
 import { attachReteRenderer, formatWatchValue } from './ReteGraphRenderer.js';
 import { readPropertyValue, applyPropertyValue, getAnimatablePropertiesForObject } from './SceneTimeline.js';
 import { ensureMidiAccess, readMidi } from './MidiRegistry.js';
+import { ExtrudeMeshFromFont } from './libs/ExtrudeMeshFromFont.js';
 
 let stylesInjected = false;
 function injectStylesOnce() {
@@ -341,6 +342,35 @@ function ReteGraphWindow( editor ) {
 	const clockStart = performance.now();
 	let lastTime = clockStart;
 
+	// 'text-set' nodes already edge-detect ("only call when the text actually changed"),
+	// but the font refetch+re-extrude is itself async - this guard just prevents two
+	// overlapping fetches for the same object if setObjectText somehow fires again
+	// before the previous one resolves (e.g. rapid toggling upstream).
+	const textRebuildsInFlight = new Set();
+	function setObjectText( uuid, text ) {
+		const obj = editor.scene.getObjectByProperty( 'uuid', uuid );
+		if ( ! obj || ! obj.userData.wpData || obj.userData.wpData.type !== 'text-3d' ) return;
+		if ( textRebuildsInFlight.has( uuid ) ) return;
+		const wpData = obj.userData.wpData;
+		const mesh = obj.children[ 0 ];
+		if ( ! mesh ) return;
+		textRebuildsInFlight.add( uuid );
+		fetch( '' + wpData.source_url )
+			.then( ( fontFile ) => fontFile.arrayBuffer() )
+			.then( ( fontBuffer ) => {
+				const rebuilt = ExtrudeMeshFromFont( fontBuffer, text, {
+					size: wpData.size,
+					depth: wpData.depth,
+					bevelEnabled: wpData.bevelEnabled,
+				} );
+				mesh.geometry.dispose();
+				mesh.geometry = rebuilt.children[ 0 ].geometry;
+				wpData.text = text;
+				editor.signals.sceneGraphChanged.dispatch();
+			} )
+			.finally( () => textRebuildsInFlight.delete( uuid ) );
+	}
+
 	function tick() {
 		rafId = requestAnimationFrame( tick );
 		const now = performance.now();
@@ -364,6 +394,7 @@ function ReteGraphWindow( editor ) {
 				const obj = editor.scene.getObjectByProperty( 'uuid', uuid );
 				if ( obj ) applyPropertyValue( obj, property, value );
 			},
+			setObjectText,
 			getGroupMembers: ( groupUuid ) => {
 				const group = editor.scene.getObjectByProperty( 'uuid', groupUuid );
 				return group && group.userData && group.userData.wvIsGroupContainer ? group.children.map( ( c ) => c.uuid ) : [];

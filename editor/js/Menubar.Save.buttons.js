@@ -26,6 +26,7 @@ function MenubarSaveButtons( editor ) {
       const sceneData = editor.scene.userData.wpData;
       const vrModels = [];
       const svgModels = [];
+      const textModels = [];
       const wpElements = [];
       const primitives = [];
       const lights = [];
@@ -209,6 +210,32 @@ function MenubarSaveButtons( editor ) {
             });
           }
 
+          if ( model.userData.wpData.type === "text-3d" ){
+            console.log( "3D text content save", model );
+            textModels.push({
+              font: model.userData.wpData.id,
+              text: model.userData.wpData.text,
+              size: model.userData.wpData.size,
+              depth: model.userData.wpData.depth,
+              bevel_enabled: !! model.userData.wpData.bevelEnabled,
+              uuid:model.uuid,
+              name:model.name,
+              position:model.position,
+              scale:model.scale,
+              rotation:{
+                x:model.rotation._x,
+                y:model.rotation._y,
+                z:model.rotation._z
+              },
+              imageTexture: _pickTexture( model, 'imageTexture' ),
+              texture: _pickTexture( model, 'texture' ),
+              videoTexture: _pickTexture( model, 'videoTexture' ),
+              color_texture: _pickTexture( model, 'colorTexture' ),
+              scene_texture: _pickTexture( model, 'sceneTexture' ),
+              group_uuid: _groupUuidOf( model ),
+            });
+          }
+
           if ( model.userData.wpData.type === "wordpress-component" ){ 
             console.log( "wp comp content save", model, model.position, model.position.x );
             wpElements.push( {
@@ -256,6 +283,7 @@ function MenubarSaveButtons( editor ) {
               models: vrModels,
               wp_elements: wpElements,
               svg_models: svgModels,
+              text_models: textModels,
               primitives: primitives,
               lights: lights,
               groups: groups,

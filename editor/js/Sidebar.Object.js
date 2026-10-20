@@ -10,6 +10,8 @@ import { SetRotationCommand } from './commands/SetRotationCommand.js';
 import { SetScaleCommand } from './commands/SetScaleCommand.js';
 import { SetColorCommand } from './commands/SetColorCommand.js';
 import { SetShadowValueCommand } from './commands/SetShadowValueCommand.js';
+import { SetGeometryCommand } from './commands/SetGeometryCommand.js';
+import { ExtrudeMeshFromFont } from './libs/ExtrudeMeshFromFont.js';
 
 function SidebarObject( editor ) {
 
@@ -416,6 +418,42 @@ function SidebarObject( editor ) {
 	objectAutoplayAnimationRow.add( new UIText( 'Autoplay Animation' ).setClass( 'Label' ) );
 	objectAutoplayAnimationRow.add( objectAutoplayAnimationCheckbox );
 	container.add( objectAutoplayAnimationRow );
+
+	// ─── WordVerse 3D Text (only shown for text-3d objects, see Menubar.Text.js) ──
+
+	const objectTextRow = new UIRow();
+	const objectTextInput = new UIInput( '' ).setWidth( '150px' );
+	const objectTextRebuildButton = new UIButton( 'Rebuild' ).onClick( function () {
+
+		const object = editor.selected;
+		const wpData = object.userData.wpData;
+		const mesh = object.children[ 0 ];
+		if ( ! wpData || ! mesh ) return;
+
+		const text = objectTextInput.getValue() || 'Hello';
+
+		fetch( '' + wpData.source_url )
+			.then( fontFile => fontFile.arrayBuffer() )
+			.then( fontBuffer => {
+
+				const rebuilt = ExtrudeMeshFromFont( fontBuffer, text, {
+					size: wpData.size,
+					depth: wpData.depth,
+					bevelEnabled: wpData.bevelEnabled,
+				} );
+
+				editor.execute( new SetGeometryCommand( editor, mesh, rebuilt.children[ 0 ].geometry ) );
+
+				wpData.text = text;
+				editor.signals.sceneGraphChanged.dispatch();
+
+			} );
+
+	} );
+	objectTextRow.add( new UIText( 'Text' ).setClass( 'Label' ) );
+	objectTextRow.add( objectTextInput );
+	objectTextRow.add( objectTextRebuildButton );
+	container.add( objectTextRow );
 
 	// ─── WordVerse Texture ─────────────────────────────────────────────────────
 
@@ -1159,6 +1197,9 @@ function SidebarObject( editor ) {
 
 		objectDefaultCameraRow.setDisplay( object.isCamera ? '' : 'none' );
 
+		const _isText3D = !! ( object.userData.wpData && object.userData.wpData.type === 'text-3d' );
+		objectTextRow.setDisplay( _isText3D ? '' : 'none' );
+
 		const _hasAnimations = !! ( object.animations && object.animations.length );
 		objectAnimationsListRow.setDisplay( _hasAnimations ? '' : 'none' );
 		objectAutoplayAnimationRow.setDisplay( _hasAnimations ? '' : 'none' );
@@ -1241,6 +1282,12 @@ function SidebarObject( editor ) {
 
 			objectAnimationsList.setValue( object.animations.map( function ( clip ) { return clip.name || '(unnamed)'; } ).join( ', ' ) );
 			objectAutoplayAnimationCheckbox.setValue( !! object.userData.useAnimations );
+
+		}
+
+		if ( object.userData.wpData && object.userData.wpData.type === 'text-3d' ) {
+
+			objectTextInput.setValue( object.userData.wpData.text || '' );
 
 		}
 

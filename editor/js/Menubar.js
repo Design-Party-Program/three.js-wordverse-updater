@@ -15,6 +15,7 @@ import { MenubarSaveButtons} from './Menubar.Save.buttons.js';
 import { MenubarUndoRedo } from './Menubar.UndoRedo.js';
 import { MenubarWordpressComponents } from './Menubar.WordpressComponents.js';
 import { MenubarSvg } from './Menubar.Svg.js';
+import { MenubarText } from './Menubar.Text.js';
 import { MenubarConnectionStatus } from './Menubar.ConnectionStatus.js';
 import { MenubarRender } from './Menubar.Render.js';
 function Menubar( editor, mqttConnection ) {
@@ -34,6 +35,7 @@ function Menubar( editor, mqttConnection ) {
 	// container.add( new MenubarFile( editor ) );
 	// container.add( new MenubarAdd( editor ) );
 	container.add( new MenubarSvg( editor ) );
+	container.add( new MenubarText( editor ) );
 	//container.add( new MenubarWordpressComponents( editor ) );
 	container.add( new MenubarModels( editor ) );
 	container.add( new MenubarViewButtons( editor ) );

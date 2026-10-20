@@ -102,7 +102,8 @@ function renderNodeBody( container, reteNode, area, hooks ) {
 		// target_uuid is a string (object uuid), not a number - renderInlineControl() only
 		// supports numeric defaults, and target_uuid already has its own dropdown picker
 		// below; still render its socket above so it can be wired from an Iterator Pair.
-		if ( ! connectedInputs.has( key ) && ! lowDetail && key !== 'target_uuid' ) {
+		// 'text' (text-set) is also a string, with its own text-input control below.
+		if ( ! connectedInputs.has( key ) && ! lowDetail && key !== 'target_uuid' && key !== 'text' ) {
 			row.appendChild( renderInlineControl( node, key, hooks ) );
 		}
 
@@ -287,6 +288,46 @@ function renderNodeControls( body, node, hooks ) {
 		renderPropertySelect();
 
 		if ( node.type === 'property-set' ) renderLoopPicker( body, node, hooks );
+	}
+
+	if ( node.type === 'text-set' ) {
+		const row = el( 'div', 'rete-node-controls' );
+
+		const targetSelect = document.createElement( 'select' );
+		targetSelect.className = 'rete-inline-select';
+		const blank = document.createElement( 'option' );
+		blank.value = '';
+		blank.textContent = '(select text object)';
+		targetSelect.appendChild( blank );
+		hooks.getSceneObjects()
+			.filter( ( obj ) => obj.userData && obj.userData.wpData && obj.userData.wpData.type === 'text-3d' )
+			.forEach( ( obj ) => {
+				const option = document.createElement( 'option' );
+				option.value = obj.uuid;
+				option.textContent = obj.name || obj.type;
+				if ( obj.uuid === node.data.target_uuid ) option.selected = true;
+				targetSelect.appendChild( option );
+			} );
+		targetSelect.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+		targetSelect.addEventListener( 'change', () => {
+			node.data.target_uuid = targetSelect.value;
+			hooks.onNodeDataChanged( node );
+		} );
+		row.appendChild( targetSelect );
+
+		const textInput = document.createElement( 'input' );
+		textInput.type = 'text';
+		textInput.className = 'rete-inline-control';
+		textInput.style.width = '100px';
+		textInput.value = node.data.text || '';
+		textInput.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+		textInput.addEventListener( 'change', () => {
+			node.data.text = textInput.value;
+			hooks.onNodeDataChanged( node );
+		} );
+		row.appendChild( textInput );
+
+		body.appendChild( row );
 	}
 
 	if ( node.type === 'audio-analyser' ) {

@@ -92,6 +92,7 @@
       import { MqttConnector } from './js/collab/mqtt/MqttConnector.js';
       import { RenderWordpressComponent } from './js/libs/RenderWordpressComponent.js';
       import { ExtrudeMeshFromSvg } from './js/libs/ExtrudeMeshFromSvg.js';
+      import { ExtrudeMeshFromFont } from './js/libs/ExtrudeMeshFromFont.js';
       import { AddObjectAndSetMetaCommand } from './js/commands/AddObjectAndSetMetaCommand.js';
       import { AddObjectCommand } from './js/commands/AddObjectCommand.js';
       import { SetPositionCommand } from './js/commands/SetPositionCommand.js';
@@ -528,6 +529,45 @@
                   sceneTexture: _validSceneId( vrSvg.scene_texture ),
                   group_uuid: vrSvg.group_uuid || null,
                 },  
+              ));
+
+            });
+          });
+        });
+
+        // fetch 3D text models
+        vrSceneData.acf.text_models && vrSceneData.acf.text_models.map(vrText => {
+
+          fetch( "/wp-json/wp/v2/media/"+vrText.font )
+          .then( vrFontResult => vrFontResult.json() )
+          .then( vrFontData => {
+
+            fetch( ""+vrFontData.source_url )
+            .then( vrFontFile => vrFontFile.arrayBuffer())
+            .then( vrFontBuffer => {
+
+              const vrTextMesh = ExtrudeMeshFromFont( vrFontBuffer, vrText.text, {
+                size: Number( vrText.size ) || 1,
+                depth: Number( vrText.depth ) || 0.2,
+                bevelEnabled: !! vrText.bevel_enabled,
+              } );
+              vrTextMesh.name = `${vrText.name || vrText.text} (3D Text)`;
+
+              editor.execute( new AddObjectAndSetMetaCommand( editor, vrTextMesh,
+                {
+                  uuid:vrText.uuid,
+                  name:vrText.name,
+                  position:vrText.position,
+                  scale:vrText.scale,
+                  rotation:vrText.rotation,
+                  wpData:{ ...vrFontData, type:'text-3d', text:vrText.text, size:vrText.size, depth:vrText.depth, bevelEnabled: !! vrText.bevel_enabled },
+                  imageTexture: vrText.imageTexture || null,
+                  texture: vrText.texture || null,
+                  videoTexture: vrText.videoTexture || null,
+                  colorTexture: vrText.color_texture || null,
+                  sceneTexture: _validSceneId( vrText.scene_texture ),
+                  group_uuid: vrText.group_uuid || null,
+                },
               ));
 
             });
