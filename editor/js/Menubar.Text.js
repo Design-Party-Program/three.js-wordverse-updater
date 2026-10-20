@@ -3,8 +3,8 @@ import { AddObjectAndSetMetaCommand } from './commands/AddObjectAndSetMetaComman
 import { ExtrudeMeshFromFont } from './libs/ExtrudeMeshFromFont.js';
 import { TextParametersDialog } from './TextParametersDialog.js';
 
-// Mirrors Menubar.Svg.js: lists WP media filtered to font files, prompts for
-// the text string/size/depth, then extrudes it into a 3D text mesh.
+// Opens TextParametersDialog (font picked/uploaded via WP's own media library) and
+// extrudes the result into a 3D text mesh - mirrors Menubar.Svg.js's add-to-scene flow.
 function MenubarText( editor ) {
 
 	const strings = editor.strings;
@@ -21,59 +21,44 @@ function MenubarText( editor ) {
 	options.setClass( 'options' );
 	container.add( options );
 
-	const addFontOption = ( fontMedia ) => {
+	const option = new UIRow();
+	option.setClass( 'option' );
+	option.setTextContent( strings.getKey( 'menubar/3dtext/add' ) );
+	option.onClick( async () => {
 
-		const option = new UIRow();
-		option.setClass( 'option' );
-		option.setTextContent( decodeURI( fontMedia.title.rendered ) );
-		option.onClick( async () => {
+		let result;
+		try {
+			result = await new TextParametersDialog( editor ).show();
+		} catch ( e ) {
+			return; // dialog cancelled
+		}
 
-			let params;
-			try {
-				params = await new TextParametersDialog( editor ).show();
-			} catch ( e ) {
-				return; // dialog cancelled
-			}
+		const textMesh = ExtrudeMeshFromFont( result.font, result.text, result );
+		textMesh.name = `${result.text} (3D Text)`;
 
-			fetch( '/wp-json/wp/v2/media/' + fontMedia.id )
-				.then( fontResult => fontResult.json() )
-				.then( fontData => {
-					fetch( '' + fontData.source_url )
-						.then( fontFile => fontFile.arrayBuffer() )
-						.then( fontBuffer => {
+		editor.execute( new AddObjectAndSetMetaCommand( editor, textMesh, {
+			position: { x: 0, y: 0, z: 0 },
+			scale: { x: 1, y: 1, z: 1 },
+			rotation: { x: 0, y: 0, z: 0 },
+			wpData: {
+				id: result.fontId,
+				source_url: result.fontUrl,
+				type: 'text-3d',
+				text: result.text,
+				size: result.size,
+				depth: result.depth,
+				bevelEnabled: result.bevelEnabled,
+				align: result.align,
+				maxWidth: result.maxWidth,
+				wordWrap: result.wordWrap,
+				letterSpacing: result.letterSpacing,
+				lineHeight: result.lineHeight,
+				kerning: result.kerning,
+			},
+		} ) );
 
-							const textMesh = ExtrudeMeshFromFont( fontBuffer, params.text, params );
-							textMesh.name = `${params.text} (3D Text)`;
-
-							editor.execute( new AddObjectAndSetMetaCommand( editor, textMesh, {
-								position: { x: 0, y: 0, z: 0 },
-								scale: { x: 1, y: 1, z: 1 },
-								rotation: { x: 0, y: 0, z: 0 },
-								wpData: {
-									...fontData,
-									type: 'text-3d',
-									text: params.text,
-									size: params.size,
-									depth: params.depth,
-									bevelEnabled: params.bevelEnabled,
-								},
-							} ) );
-
-						} );
-				} );
-
-		} );
-		options.add( option );
-
-	};
-
-	// WP media search doesn't filter by mime type, so merge the .ttf and .otf searches.
-	Promise.all( [
-		fetch( '/wp-json/wp/v2/media?per_page=100&search=.ttf' ).then( r => r.json() ),
-		fetch( '/wp-json/wp/v2/media?per_page=100&search=.otf' ).then( r => r.json() ),
-	] ).then( ( [ ttfResults, otfResults ] ) => {
-		[ ...ttfResults, ...otfResults ].forEach( addFontOption );
 	} );
+	options.add( option );
 
 	return container;
 

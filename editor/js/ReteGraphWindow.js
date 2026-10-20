@@ -19,7 +19,7 @@ import {
 import { attachReteRenderer, formatWatchValue } from './ReteGraphRenderer.js';
 import { readPropertyValue, applyPropertyValue, getAnimatablePropertiesForObject } from './SceneTimeline.js';
 import { ensureMidiAccess, readMidi } from './MidiRegistry.js';
-import { ExtrudeMeshFromFont } from './libs/ExtrudeMeshFromFont.js';
+import { ExtrudeMeshFromFont, parseFontBuffer } from './libs/ExtrudeMeshFromFont.js';
 
 let stylesInjected = false;
 function injectStylesOnce() {
@@ -358,10 +358,17 @@ function ReteGraphWindow( editor ) {
 		fetch( '' + wpData.source_url )
 			.then( ( fontFile ) => fontFile.arrayBuffer() )
 			.then( ( fontBuffer ) => {
-				const rebuilt = ExtrudeMeshFromFont( fontBuffer, text, {
+				const font = parseFontBuffer( fontBuffer );
+				const rebuilt = ExtrudeMeshFromFont( font, text, {
 					size: wpData.size,
 					depth: wpData.depth,
 					bevelEnabled: wpData.bevelEnabled,
+					align: wpData.align,
+					maxWidth: wpData.maxWidth,
+					wordWrap: wpData.wordWrap,
+					letterSpacing: wpData.letterSpacing,
+					lineHeight: wpData.lineHeight,
+					kerning: wpData.kerning,
 				} );
 				mesh.geometry.dispose();
 				mesh.geometry = rebuilt.children[ 0 ].geometry;

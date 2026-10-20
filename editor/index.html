@@ -92,7 +92,7 @@
       import { MqttConnector } from './js/collab/mqtt/MqttConnector.js';
       import { RenderWordpressComponent } from './js/libs/RenderWordpressComponent.js';
       import { ExtrudeMeshFromSvg } from './js/libs/ExtrudeMeshFromSvg.js';
-      import { ExtrudeMeshFromFont } from './js/libs/ExtrudeMeshFromFont.js';
+      import { ExtrudeMeshFromFont, parseFontBuffer } from './js/libs/ExtrudeMeshFromFont.js';
       import { AddObjectAndSetMetaCommand } from './js/commands/AddObjectAndSetMetaCommand.js';
       import { AddObjectCommand } from './js/commands/AddObjectCommand.js';
       import { SetPositionCommand } from './js/commands/SetPositionCommand.js';
@@ -546,11 +546,19 @@
             .then( vrFontFile => vrFontFile.arrayBuffer())
             .then( vrFontBuffer => {
 
-              const vrTextMesh = ExtrudeMeshFromFont( vrFontBuffer, vrText.text, {
+              const vrFont = parseFontBuffer( vrFontBuffer );
+              const vrTextParams = {
                 size: Number( vrText.size ) || 1,
                 depth: Number( vrText.depth ) || 0.2,
                 bevelEnabled: !! vrText.bevel_enabled,
-              } );
+                align: vrText.align || 'left',
+                maxWidth: Number( vrText.max_width ) || 0,
+                wordWrap: vrText.word_wrap !== false,
+                letterSpacing: Number( vrText.letter_spacing ) || 0,
+                lineHeight: Number( vrText.line_height ) || 1.2,
+                kerning: vrText.kerning !== false,
+              };
+              const vrTextMesh = ExtrudeMeshFromFont( vrFont, vrText.text, vrTextParams );
               vrTextMesh.name = `${vrText.name || vrText.text} (3D Text)`;
 
               editor.execute( new AddObjectAndSetMetaCommand( editor, vrTextMesh,
@@ -560,7 +568,7 @@
                   position:vrText.position,
                   scale:vrText.scale,
                   rotation:vrText.rotation,
-                  wpData:{ ...vrFontData, type:'text-3d', text:vrText.text, size:vrText.size, depth:vrText.depth, bevelEnabled: !! vrText.bevel_enabled },
+                  wpData:{ id: vrFontData.id, source_url: vrFontData.source_url, type:'text-3d', text:vrText.text, ...vrTextParams },
                   imageTexture: vrText.imageTexture || null,
                   texture: vrText.texture || null,
                   videoTexture: vrText.videoTexture || null,

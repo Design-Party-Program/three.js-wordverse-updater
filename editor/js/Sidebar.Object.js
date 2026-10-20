@@ -12,6 +12,7 @@ import { SetColorCommand } from './commands/SetColorCommand.js';
 import { SetShadowValueCommand } from './commands/SetShadowValueCommand.js';
 import { SetGeometryCommand } from './commands/SetGeometryCommand.js';
 import { ExtrudeMeshFromFont } from './libs/ExtrudeMeshFromFont.js';
+import { TextParametersDialog } from './TextParametersDialog.js';
 
 function SidebarObject( editor ) {
 
@@ -422,37 +423,56 @@ function SidebarObject( editor ) {
 	// ─── WordVerse 3D Text (only shown for text-3d objects, see Menubar.Text.js) ──
 
 	const objectTextRow = new UIRow();
-	const objectTextInput = new UIInput( '' ).setWidth( '150px' );
-	const objectTextRebuildButton = new UIButton( 'Rebuild' ).onClick( function () {
+	const objectTextEditButton = new UIButton( 'Edit Text...' ).onClick( async function () {
 
 		const object = editor.selected;
 		const wpData = object.userData.wpData;
 		const mesh = object.children[ 0 ];
 		if ( ! wpData || ! mesh ) return;
 
-		const text = objectTextInput.getValue() || 'Hello';
+		let result;
+		try {
+			result = await new TextParametersDialog( editor, {
+				fontId: wpData.id,
+				fontUrl: wpData.source_url,
+				text: wpData.text,
+				size: wpData.size,
+				depth: wpData.depth,
+				bevelEnabled: wpData.bevelEnabled,
+				align: wpData.align,
+				maxWidth: wpData.maxWidth,
+				wordWrap: wpData.wordWrap,
+				letterSpacing: wpData.letterSpacing,
+				lineHeight: wpData.lineHeight,
+				kerning: wpData.kerning,
+			}, 'Edit 3D Text' ).show();
+		} catch ( e ) {
+			return; // dialog cancelled
+		}
 
-		fetch( '' + wpData.source_url )
-			.then( fontFile => fontFile.arrayBuffer() )
-			.then( fontBuffer => {
+		const rebuilt = ExtrudeMeshFromFont( result.font, result.text, result );
+		editor.execute( new SetGeometryCommand( editor, mesh, rebuilt.children[ 0 ].geometry ) );
 
-				const rebuilt = ExtrudeMeshFromFont( fontBuffer, text, {
-					size: wpData.size,
-					depth: wpData.depth,
-					bevelEnabled: wpData.bevelEnabled,
-				} );
-
-				editor.execute( new SetGeometryCommand( editor, mesh, rebuilt.children[ 0 ].geometry ) );
-
-				wpData.text = text;
-				editor.signals.sceneGraphChanged.dispatch();
-
-			} );
+		Object.assign( wpData, {
+			id: result.fontId,
+			source_url: result.fontUrl,
+			text: result.text,
+			size: result.size,
+			depth: result.depth,
+			bevelEnabled: result.bevelEnabled,
+			align: result.align,
+			maxWidth: result.maxWidth,
+			wordWrap: result.wordWrap,
+			letterSpacing: result.letterSpacing,
+			lineHeight: result.lineHeight,
+			kerning: result.kerning,
+		} );
+		object.name = `${result.text} (3D Text)`;
+		editor.signals.sceneGraphChanged.dispatch();
 
 	} );
 	objectTextRow.add( new UIText( 'Text' ).setClass( 'Label' ) );
-	objectTextRow.add( objectTextInput );
-	objectTextRow.add( objectTextRebuildButton );
+	objectTextRow.add( objectTextEditButton );
 	container.add( objectTextRow );
 
 	// ─── WordVerse Texture ─────────────────────────────────────────────────────
@@ -1282,12 +1302,6 @@ function SidebarObject( editor ) {
 
 			objectAnimationsList.setValue( object.animations.map( function ( clip ) { return clip.name || '(unnamed)'; } ).join( ', ' ) );
 			objectAutoplayAnimationCheckbox.setValue( !! object.userData.useAnimations );
-
-		}
-
-		if ( object.userData.wpData && object.userData.wpData.type === 'text-3d' ) {
-
-			objectTextInput.setValue( object.userData.wpData.text || '' );
 
 		}
 
