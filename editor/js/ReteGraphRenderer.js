@@ -19,7 +19,7 @@
 // See https://github.com/retejs/area-plugin (src/index.ts addNodeView/addConnectionView)
 // and https://github.com/retejs/connection-plugin (src/index.ts render/socket handling).
 
-import { NODE_TYPES } from './ReteGraph.js';
+import { NODE_TYPES, MATH_OPS } from './ReteGraph.js';
 
 function el( tag, className, text ) {
 	const node = document.createElement( tag );
@@ -94,6 +94,15 @@ function renderNodeBody( container, reteNode, area, hooks ) {
 	} );
 
 	typeDef.inputs.forEach( ( key ) => {
+
+		// 'math' always declares all 3 sockets ('a'/'b'/'c') so a connection to any of them
+		// survives switching ops, but only the ones the CURRENT op actually uses are shown -
+		// e.g. 'floor' (arity 1) only shows 'a', 'lerp' (arity 3) shows all three.
+		if ( node.type === 'math' ) {
+			const arity = ( MATH_OPS[ node.data.op ] || MATH_OPS.add ).arity;
+			if ( ( key === 'b' && arity < 2 ) || ( key === 'c' && arity < 3 ) ) return;
+		}
+
 		const row = el( 'div', 'rete-socket-row rete-socket-row-input' );
 		const socket = el( 'div', 'rete-socket rete-socket-input' );
 		row.appendChild( socket );
@@ -115,7 +124,7 @@ function renderNodeBody( container, reteNode, area, hooks ) {
 	// and the property-get/set target+property pickers. Skipped when zoomed out (LOD):
 	// these are the most expensive part per node (dropdowns, some backed by a full
 	// scene walk) and illegible at that scale anyway.
-	if ( ! lowDetail ) renderNodeControls( body, node, hooks );
+	if ( ! lowDetail ) renderNodeControls( body, node, hooks, area );
 }
 
 function renderInlineControl( node, key, hooks ) {
@@ -177,7 +186,7 @@ function renderLoopPicker( body, node, hooks ) {
 	body.appendChild( row );
 }
 
-function renderNodeControls( body, node, hooks ) {
+function renderNodeControls( body, node, hooks, area ) {
 	if ( node.type === 'oscillator' ) {
 		const row = el( 'div', 'rete-node-controls' );
 		row.appendChild( select( [ 'sine', 'triangle', 'square', 'sawtooth' ], node.data.waveform, ( v ) => {
@@ -189,9 +198,12 @@ function renderNodeControls( body, node, hooks ) {
 
 	if ( node.type === 'math' ) {
 		const row = el( 'div', 'rete-node-controls' );
-		row.appendChild( select( [ 'add', 'sub', 'mul', 'div', 'min', 'max' ], node.data.op, ( v ) => {
+		row.appendChild( select( Object.keys( MATH_OPS ), node.data.op, ( v ) => {
 			node.data.op = v;
 			hooks.onNodeDataChanged( node );
+			// Switching op can change its arity (which sockets/controls are shown) -
+			// re-render this node's whole body to reflect that immediately.
+			void area.update( 'node', node.id );
 		} ) );
 		body.appendChild( row );
 	}

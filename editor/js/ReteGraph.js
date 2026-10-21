@@ -72,13 +72,37 @@ const WAVEFORMS = {
 	sawtooth: ( t ) => 2 * ( ( t / ( 2 * Math.PI ) ) - Math.floor( 0.5 + t / ( 2 * Math.PI ) ) ),
 };
 
+// Each op declares its arity (1 = unary 'a' only, 2 = binary 'a'/'b', 3 = ternary
+// 'a'/'b'/'c') so the renderer (ReteGraphRenderer.js) knows which input sockets/inline
+// controls to show for the currently selected op - the 'math' node itself always has
+// all 3 sockets/inputs available to wire, this just declutters the UI for unused ones.
 const MATH_OPS = {
-	add: ( a, b ) => a + b,
-	sub: ( a, b ) => a - b,
-	mul: ( a, b ) => a * b,
-	div: ( a, b ) => ( b === 0 ? 0 : a / b ),
-	min: ( a, b ) => Math.min( a, b ),
-	max: ( a, b ) => Math.max( a, b ),
+	add: { arity: 2, fn: ( a, b ) => a + b },
+	sub: { arity: 2, fn: ( a, b ) => a - b },
+	mul: { arity: 2, fn: ( a, b ) => a * b },
+	div: { arity: 2, fn: ( a, b ) => ( b === 0 ? 0 : a / b ) },
+	min: { arity: 2, fn: ( a, b ) => Math.min( a, b ) },
+	max: { arity: 2, fn: ( a, b ) => Math.max( a, b ) },
+	// True modulo (always non-negative), not raw JS '%' (which can return negative) -
+	mod: { arity: 2, fn: ( a, b ) => ( b === 0 ? 0 : ( ( a % b ) + b ) % b ) },
+	pow: { arity: 2, fn: ( a, b ) => Math.pow( a, b ) },
+	atan2: { arity: 2, fn: ( a, b ) => Math.atan2( a, b ) },
+	lerp: { arity: 3, fn: ( a, b, c ) => a + ( b - a ) * c },
+	floor: { arity: 1, fn: ( a ) => Math.floor( a ) },
+	ceil: { arity: 1, fn: ( a ) => Math.ceil( a ) },
+	round: { arity: 1, fn: ( a ) => Math.round( a ) },
+	trunc: { arity: 1, fn: ( a ) => Math.trunc( a ) },
+	abs: { arity: 1, fn: ( a ) => Math.abs( a ) },
+	sign: { arity: 1, fn: ( a ) => Math.sign( a ) },
+	sqrt: { arity: 1, fn: ( a ) => Math.sqrt( a ) },
+	exp: { arity: 1, fn: ( a ) => Math.exp( a ) },
+	log: { arity: 1, fn: ( a ) => Math.log( a ) },
+	sin: { arity: 1, fn: ( a ) => Math.sin( a ) },
+	cos: { arity: 1, fn: ( a ) => Math.cos( a ) },
+	tan: { arity: 1, fn: ( a ) => Math.tan( a ) },
+	asin: { arity: 1, fn: ( a ) => Math.asin( a ) },
+	acos: { arity: 1, fn: ( a ) => Math.acos( a ) },
+	atan: { arity: 1, fn: ( a ) => Math.atan( a ) },
 };
 
 function mapRange( value, inMin, inMax, outMin, outMax ) {
@@ -131,7 +155,7 @@ const NODE_DEFAULTS = {
 	time: {},
 	constant: { value: 0 },
 	oscillator: { waveform: 'sine', frequency: 1, amplitude: 1, offset: 0, phase: 0 },
-	math: { op: 'add', a: 0, b: 0 },
+	math: { op: 'add', a: 0, b: 0, c: 0 },
 	clamp: { value: 0, min: 0, max: 1 },
 	'map-range': { value: 0, inMin: 0, inMax: 1, outMin: 0, outMax: 1 },
 	vector3: { x: 0, y: 0, z: 0 },
@@ -190,12 +214,16 @@ const NODE_TYPES = {
 	},
 	math: {
 		label: 'Math',
-		description: 'Add/subtract/multiply/divide/min/max of two numbers.',
-		inputs: [ 'a', 'b' ],
+		description: 'Arithmetic/trig/rounding op on 1-3 numbers (arity depends on the chosen op).',
+		inputs: [ 'a', 'b', 'c' ],
 		outputs: [ 'value' ],
 		compute: ( data, getInput ) => {
-			const op = MATH_OPS[ data.op ] || MATH_OPS.add;
-			return { value: op( Number( getInput( 'a' ) ), Number( getInput( 'b' ) ) ) };
+			const opDef = MATH_OPS[ data.op ] || MATH_OPS.add;
+			const a = Number( getInput( 'a' ) );
+			const b = Number( getInput( 'b' ) );
+			const c = Number( getInput( 'c' ) );
+			const args = opDef.arity === 1 ? [ a ] : opDef.arity === 3 ? [ a, b, c ] : [ a, b ];
+			return { value: opDef.fn( ...args ) };
 		},
 	},
 	clamp: {
@@ -672,4 +700,5 @@ export {
 	evaluateGraph,
 	NODE_TYPES,
 	NODE_DEFAULTS,
+	MATH_OPS,
 };

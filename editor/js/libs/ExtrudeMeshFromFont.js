@@ -10,6 +10,27 @@ import opentype from 'https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/+esm';
 
 export const parseFontBuffer = ( arrayBuffer ) => opentype.parse( arrayBuffer );
 
+// ACF/WP REST often returns "number" sub-fields as strings and "true_false" sub-fields
+// as "0"/"1" strings (both are truthy as plain JS strings!). Coercing defensively here -
+// the single entry point - matters a lot more than for position/rotation/scale elsewhere
+// in this codebase: layoutShapes() below accumulates `x` via `+=`, and `number += string`
+// silently does STRING CONCATENATION instead of addition, which cascades into NaN vertex
+// positions a few glyphs later (not just a wrong number) - see the "ACF numbers come back
+// as strings" lesson already learned the hard way for camera near/far.
+function toNumber( value, fallback ) {
+	// ACF reports a field as `false` when its schema hasn't been (re-)imported yet or it
+	// genuinely has no value - treat that the same as unset rather than coercing to 0.
+	if ( value === false || value === undefined || value === null || value === '' ) return fallback;
+	const n = Number( value );
+	return Number.isFinite( n ) ? n : fallback;
+}
+
+function toBool( value, fallback ) {
+	if ( value === undefined || value === null || value === '' ) return fallback;
+	if ( typeof value === 'string' ) return value !== '0' && value.toLowerCase() !== 'false';
+	return !! value;
+}
+
 // Best-effort static metadata read directly off the font file - opentype.js has no
 // support for applying variable-font (fvar/gvar) axes to glyph outlines, so a single
 // uploaded TTF/OTF only ever has ONE baked-in weight/style. "Choosing a variant" means
@@ -125,18 +146,20 @@ function layoutShapes( font, text, { size, align, maxWidth, wordWrap, letterSpac
 	return shapes;
 }
 
-export const ExtrudeMeshFromFont = ( font, text, {
-	size = 1,
-	depth = 0.2,
-	bevelEnabled = false,
-	align = 'left',
-	maxWidth = 0,
-	wordWrap = true,
-	letterSpacing = 0,
-	lineHeight = 1.2,
-	kerning = true,
-	color = 0x222222,
-} = {} ) => {
+export const ExtrudeMeshFromFont = ( font, text, options = {} ) => {
+
+	// Single sanitization point - every numeric/boolean field is coerced here once,
+	// then both layoutShapes() and ExtrudeGeometry() below consume the clean values.
+	const size = toNumber( options.size, 1 );
+	const depth = toNumber( options.depth, 0.2 );
+	const bevelEnabled = toBool( options.bevelEnabled, false );
+	const align = options.align === 'center' || options.align === 'right' ? options.align : 'left';
+	const maxWidth = toNumber( options.maxWidth, 0 );
+	const wordWrap = toBool( options.wordWrap, true );
+	const letterSpacing = toNumber( options.letterSpacing, 0 );
+	const lineHeight = toNumber( options.lineHeight, 1.2 );
+	const kerning = toBool( options.kerning, true );
+	const color = options.color || 0x222222;
 
 	const shapes = layoutShapes( font, text || '', {
 		size, align, maxWidth, wordWrap, letterSpacing, lineHeight, kerning,
