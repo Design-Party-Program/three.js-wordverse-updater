@@ -295,7 +295,11 @@ const NODE_TYPES = {
 		inputs: [ 'value', 'target_uuid' ],
 		outputs: [],
 		compute: ( data, getInput, context ) => {
-			context.applyProperty( getInput( 'target_uuid' ), data.property, getInput( 'value' ) );
+			const value = getInput( 'value' );
+			// An unwired/orphaned value input (no connection, no data.value) must NOT write
+			// undefined onto the object every frame - leave it untouched instead.
+			if ( value === undefined ) return {};
+			context.applyProperty( getInput( 'target_uuid' ), data.property, value );
 			return {};
 		},
 	},
@@ -694,6 +698,7 @@ function evaluateGraph( graph, context ) {
 			members.forEach( ( uuid, index ) => {
 				const memberContext = Object.assign( {}, context, { iteratorIndex: index, iteratorCount: members.length } );
 				const value = evaluateInputWithContext( graph, n.id, 'value', memberContext );
+				if ( value === undefined ) return;
 				context.applyProperty( uuid, n.data.property, value );
 			} );
 		} else if ( n.type === 'midi-pair-loop' ) {
