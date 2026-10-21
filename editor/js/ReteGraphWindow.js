@@ -14,6 +14,7 @@ import { NodeEditor, AreaPlugin, AreaExtensions, ConnectionPlugin, ConnectionPre
 import {
 	createReteNode,
 	evaluateGraph,
+	buildUnifiedGraph,
 	NODE_TYPES,
 } from './ReteGraph.js';
 import { attachReteRenderer, formatWatchValue } from './ReteGraphRenderer.js';
@@ -390,7 +391,14 @@ function ReteGraphWindow( editor ) {
 			connections: nodeEditor.getConnections(),
 		};
 
-		evaluateGraph( graph, {
+		// Lifts the scene's legacy Scene Timeline tracks into this same graph (see
+		// buildUnifiedGraph()) so this one preview shows timeline-driven and rete-authored
+		// motion together, exactly as the r3f player will evaluate them - `respectAutoplay:
+		// false` because this is an authoring preview (a track should stay visible here
+		// even if its "autoplay in the player" flag happens to be off).
+		const unifiedGraph = buildUnifiedGraph( graph, editor.scene.userData.timeline, false );
+
+		evaluateGraph( unifiedGraph, {
 			time,
 			delta,
 			readProperty: ( uuid, property ) => {

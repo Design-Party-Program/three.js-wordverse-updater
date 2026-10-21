@@ -467,6 +467,207 @@ function renderNodeControls( body, node, hooks, area ) {
 		renderLoopPicker( body, node, hooks );
 	}
 
+	if ( node.type === 'timeline-track' ) {
+		const row = el( 'div', 'rete-node-controls' );
+
+		const targetSelect = document.createElement( 'select' );
+		targetSelect.className = 'rete-inline-select';
+		const blank = document.createElement( 'option' );
+		blank.value = '';
+		blank.textContent = '(select object)';
+		targetSelect.appendChild( blank );
+		hooks.getSceneObjects().forEach( ( obj ) => {
+			const option = document.createElement( 'option' );
+			option.value = obj.uuid;
+			option.textContent = obj.name || obj.type;
+			if ( obj.uuid === node.data.target_uuid ) option.selected = true;
+			targetSelect.appendChild( option );
+		} );
+		targetSelect.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+		targetSelect.addEventListener( 'change', () => {
+			node.data.target_uuid = targetSelect.value;
+			hooks.onNodeDataChanged( node );
+			renderPropertySelect();
+		} );
+		row.appendChild( targetSelect );
+
+		const propertyContainer = el( 'div' );
+		row.appendChild( propertyContainer );
+		body.appendChild( row );
+
+		function renderPropertySelect() {
+			propertyContainer.innerHTML = '';
+			const target = hooks.getSceneObjects().find( ( o ) => o.uuid === node.data.target_uuid );
+			if ( ! target ) return;
+			const properties = hooks.getAnimatableProperties( target );
+			const propSelect = select( properties, node.data.property, ( v ) => {
+				node.data.property = v;
+				hooks.onNodeDataChanged( node );
+				renderKeyframes();
+			} );
+			propertyContainer.appendChild( propSelect );
+		}
+		renderPropertySelect();
+
+		const loopRow = el( 'div', 'rete-node-controls' );
+		const loopLabel = document.createElement( 'label' );
+		const loopCheckbox = document.createElement( 'input' );
+		loopCheckbox.type = 'checkbox';
+		loopCheckbox.checked = !! node.data.loop;
+		loopCheckbox.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+		loopCheckbox.addEventListener( 'change', () => {
+			node.data.loop = loopCheckbox.checked;
+			hooks.onNodeDataChanged( node );
+		} );
+		loopLabel.appendChild( loopCheckbox );
+		loopLabel.appendChild( document.createTextNode( ' Loop track' ) );
+		loopRow.appendChild( loopLabel );
+		body.appendChild( loopRow );
+
+		const listContainer = el( 'div', 'rete-pair-list' );
+		body.appendChild( listContainer );
+
+		// Renders one keyframe's value editor - dispatches on the currently-selected
+		// property's shape (boolean/color/vector/scalar), same categories as
+		// getAnimatablePropertiesForObject()'s own list.
+		function renderKeyframeValue( container, keyframe ) {
+			container.innerHTML = '';
+			const property = node.data.property;
+
+			if ( property === 'visible' ) {
+				const checkbox = document.createElement( 'input' );
+				checkbox.type = 'checkbox';
+				checkbox.checked = !! keyframe.value;
+				checkbox.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+				checkbox.addEventListener( 'change', () => {
+					keyframe.value = checkbox.checked;
+					hooks.onNodeDataChanged( node );
+				} );
+				container.appendChild( checkbox );
+				return;
+			}
+
+			if ( property === 'color_texture' || property === 'color' ) {
+				const input = document.createElement( 'input' );
+				input.type = 'color';
+				input.value = keyframe.value || '#ffffff';
+				input.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+				input.addEventListener( 'change', () => {
+					keyframe.value = input.value;
+					hooks.onNodeDataChanged( node );
+				} );
+				container.appendChild( input );
+				return;
+			}
+
+			if ( property === 'position' || property === 'rotation' || property === 'scale' ) {
+				const fallback = property === 'scale' ? 1 : 0;
+				[ 'x', 'y', 'z' ].forEach( ( axis ) => {
+					const input = document.createElement( 'input' );
+					input.type = 'number';
+					input.step = 'any';
+					input.className = 'rete-inline-control';
+					input.title = axis;
+					input.value = ( keyframe.value && keyframe.value[ axis ] !== undefined ) ? keyframe.value[ axis ] : fallback;
+					input.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+					input.addEventListener( 'change', () => {
+						if ( ! keyframe.value || typeof keyframe.value !== 'object' ) {
+							keyframe.value = { x: fallback, y: fallback, z: fallback };
+						}
+						keyframe.value[ axis ] = Number( input.value ) || fallback;
+						hooks.onNodeDataChanged( node );
+					} );
+					container.appendChild( input );
+				} );
+				return;
+			}
+
+			const input = document.createElement( 'input' );
+			input.type = 'number';
+			input.step = 'any';
+			input.className = 'rete-inline-control';
+			input.value = Number( keyframe.value ) || 0;
+			input.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+			input.addEventListener( 'change', () => {
+				keyframe.value = Number( input.value ) || 0;
+				hooks.onNodeDataChanged( node );
+			} );
+			container.appendChild( input );
+		}
+
+		function renderKeyframes() {
+			listContainer.innerHTML = '';
+			if ( ! Array.isArray( node.data.keyframes ) ) node.data.keyframes = [];
+			node.data.keyframes.sort( ( a, b ) => a.time - b.time );
+			node.data.keyframes.forEach( ( keyframe, index ) => {
+				const kfRow = el( 'div', 'rete-pair-row' );
+
+				const timeInput = document.createElement( 'input' );
+				timeInput.type = 'number';
+				timeInput.step = 'any';
+				timeInput.className = 'rete-inline-control';
+				timeInput.title = 'Time (seconds)';
+				timeInput.value = keyframe.time;
+				timeInput.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+				timeInput.addEventListener( 'change', () => {
+					keyframe.time = Number( timeInput.value ) || 0;
+					hooks.onNodeDataChanged( node );
+					renderKeyframes();
+				} );
+				kfRow.appendChild( timeInput );
+
+				const valueContainer = el( 'span', 'rete-keyframe-value' );
+				kfRow.appendChild( valueContainer );
+				renderKeyframeValue( valueContainer, keyframe );
+
+				kfRow.appendChild( select( [ 'tween', 'set' ], keyframe.mode || 'tween', ( v ) => {
+					keyframe.mode = v;
+					hooks.onNodeDataChanged( node );
+				} ) );
+
+				kfRow.appendChild( select( [ 'linear', 'easeInQuad', 'easeOutQuad', 'easeInOutQuad' ], keyframe.easing || 'linear', ( v ) => {
+					keyframe.easing = v;
+					hooks.onNodeDataChanged( node );
+				} ) );
+
+				const removeBtn = el( 'span', 'rete-node-remove', '\u00d7' );
+				removeBtn.title = 'Remove keyframe';
+				removeBtn.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+				removeBtn.addEventListener( 'click', () => {
+					node.data.keyframes.splice( index, 1 );
+					hooks.onNodeDataChanged( node );
+					renderKeyframes();
+				} );
+				kfRow.appendChild( removeBtn );
+
+				listContainer.appendChild( kfRow );
+			} );
+		}
+		renderKeyframes();
+
+		const addRow = el( 'div', 'rete-node-controls' );
+		const addButton = document.createElement( 'button' );
+		addButton.textContent = '+ Add keyframe';
+		addButton.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
+		addButton.addEventListener( 'click', () => {
+			const last = node.data.keyframes[ node.data.keyframes.length - 1 ];
+			node.data.keyframes.push( {
+				id: 'kf-' + Date.now().toString( 36 ) + '-' + Math.floor( Math.random() * 1e6 ).toString( 36 ),
+				type: 'keyframe',
+				time: last ? last.time + 1 : 0,
+				mode: 'tween',
+				value: last ? last.value : 0,
+				easing: 'linear',
+				inputs: {},
+				outputs: {},
+			} );
+			hooks.onNodeDataChanged( node );
+			renderKeyframes();
+		} );
+		addRow.appendChild( addButton );
+		body.appendChild( addRow );
+	}
+
 	if ( node.type === 'midi-pair-list' ) {
 		const listContainer = el( 'div', 'rete-pair-list' );
 		body.appendChild( listContainer );

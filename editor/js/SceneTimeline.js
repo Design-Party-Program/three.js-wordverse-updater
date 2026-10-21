@@ -81,6 +81,40 @@ function lerpValue( a, b, t ) {
 	return t < 0.5 ? a : b;
 }
 
+// Converts a legacy Scene Timeline's flat keyframe list into synthetic 'timeline-track'
+// rete nodes (see ReteGraph.js's buildUnifiedGraph()) - this is what makes "timelines"
+// just a different authoring VIEW over the same underlying rete node/evaluation model,
+// rather than a second independently-ticking engine. Each (target_uuid, property) track
+// becomes one node; master duration/loop are baked into each node's data so a single
+// 'timeline-track' node stays a pure function of (data, t) with no separate "master
+// clock" concept needed. `respectAutoplay=true` (the r3f player's behavior) skips the
+// lift entirely when `timeline.autoplay` is false - previously that just meant
+// SceneTimelinePlayer's useFrame no-opped; `respectAutoplay=false` (the editor's always-on
+// authoring preview) ignores that flag so a track is visible while being edited regardless.
+function liftTimelineToNodes( timeline, respectAutoplay = true ) {
+	if ( ! timeline || ! Array.isArray( timeline.nodes ) || ! timeline.nodes.length ) return [];
+	if ( respectAutoplay && ! timeline.autoplay ) return [];
+	const tracks = groupTracksByTarget( timeline.nodes );
+	const nodes = [];
+	tracks.forEach( ( keyframes, key ) => {
+		const sep = key.indexOf( '::' );
+		nodes.push( {
+			id: '__timeline__' + key,
+			type: 'timeline-track',
+			position: [ 0, 0 ],
+			data: {
+				target_uuid: key.slice( 0, sep ),
+				property: key.slice( sep + 2 ),
+				keyframes,
+				loop: !! ( timeline.loops && timeline.loops[ key ] ),
+				_masterDuration: timeline.duration || 0,
+				_masterLoop: !! timeline.loop,
+			},
+		} );
+	} );
+	return nodes;
+}
+
 // Groups timeline nodes by `${target_uuid}::${property}`, each list sorted by time.
 function groupTracksByTarget( nodes ) {
 	const map = new Map();
@@ -388,6 +422,7 @@ export {
 	uuidv4,
 	parseTimeline,
 	createNode,
+	liftTimelineToNodes,
 	groupTracksByTarget,
 	evaluateTrack,
 	evaluateRelativeTrack,

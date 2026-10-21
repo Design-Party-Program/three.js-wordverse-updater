@@ -8,6 +8,12 @@
 // small hand-rolled pull-based interpreter over this plain JSON shape - this keeps the
 // runtime trivial to port to the r3f player (no rete.js runtime dependency needed
 // there), exactly like Scene Timeline's evaluator needed no authoring-library parity.
+//
+// Scene Timeline ('timeline-track' node, see below) is absorbed INTO this one engine via
+// buildUnifiedGraph() rather than being a second independently-ticking system - this is
+// what eliminates the "two engines write the same property, last one wins" class of bug
+// (e.g. a Timeline track and a Rete oscillator both targeting the same object's position.x).
+import { evaluateTrack, wrapTrackTime, wrapMasterTime, liftTimelineToNodes } from './SceneTimeline.js';
 
 function uuidv4() {
 	return '10000000-1000-4000-8000-100000000000'.replace( /[018]/g, c =>
@@ -164,6 +170,7 @@ const NODE_DEFAULTS = {
 	'property-get': { target_uuid: '', property: 'position.y' },
 	'property-set': { target_uuid: '', property: 'position.y', loop_id: '' },
 	'text-set': { target_uuid: '', text: '' },
+	'timeline-track': { target_uuid: '', property: 'position.y', keyframes: [], loop: false },
 	compare: { op: 'gt', a: 0, b: 0 },
 	logic: { op: 'and', a: false, b: false },
 	'flip-flop': { trigger: false },
@@ -303,6 +310,26 @@ const NODE_TYPES = {
 				data._lastAppliedText = text;
 				context.setObjectText( getInput( 'target_uuid' ), text );
 			}
+			return {};
+		},
+	},
+	'timeline-track': {
+		label: 'Timeline Track',
+		description: 'Plays an authored keyframe sequence onto a property every frame (edit keyframes in the node body) - the unified replacement for the old separate Scene Timeline engine.',
+		inputs: [ 't', 'target_uuid' ],
+		outputs: [],
+		compute: ( data, getInput, context ) => {
+			const keyframes = Array.isArray( data.keyframes ) ? data.keyframes.slice().sort( ( a, b ) => a.time - b.time ) : [];
+			if ( ! keyframes.length ) return {};
+			const rawT = Number( getInput( 't' ) ?? context.time );
+			// _masterDuration/_masterLoop are only set on tracks lifted from a legacy Scene
+			// Timeline (see liftTimelineToNodes) - a freshly-authored node has duration 0,
+			// which wrapMasterTime treats as "no master wrap", i.e. just raw elapsed time.
+			const masterT = wrapMasterTime( rawT, Number( data._masterDuration ) || 0, !! data._masterLoop );
+			const trackTime = wrapTrackTime( keyframes, masterT, !! data.loop );
+			const value = evaluateTrack( keyframes, trackTime );
+			if ( value === undefined ) return {};
+			context.applyProperty( getInput( 'target_uuid' ), data.property, value );
 			return {};
 		},
 	},
@@ -660,7 +687,7 @@ function evaluateGraph( graph, context ) {
 		// themselves a sink type.
 		if ( n.data && n.data.loop_id ) return;
 
-		if ( n.type === 'property-set' || n.type === 'watch' || n.type === 'play-sample' || n.type === 'text-set' ) {
+		if ( n.type === 'property-set' || n.type === 'watch' || n.type === 'play-sample' || n.type === 'text-set' || n.type === 'timeline-track' ) {
 			computeNode( n.id );
 		} else if ( n.type === 'group-set' ) {
 			const members = context.getGroupMembers ? context.getGroupMembers( n.data.group_uuid ) : [];
@@ -691,6 +718,22 @@ function evaluateGraph( graph, context ) {
 	} );
 }
 
+// Merges a legacy Scene Timeline's tracks (lifted into synthetic 'timeline-track' nodes,
+// see liftTimelineToNodes()) into an authored rete graph, so evaluateGraph() drives BOTH
+// from one unified pass instead of two independently-ticking engines. `respectAutoplay`
+// defaults true (the r3f player's behavior - a timeline with autoplay=false contributes
+// nothing); the editor's own always-on authoring preview (ReteGraphWindow.js) passes
+// false so a track stays visible while being edited regardless of that player-only flag.
+function buildUnifiedGraph( graph, timeline, respectAutoplay = true ) {
+	const liftedNodes = liftTimelineToNodes( timeline, respectAutoplay );
+	if ( ! liftedNodes.length ) return graph || { version: 1, nodes: [], connections: [] };
+	return {
+		version: ( graph && graph.version ) || 1,
+		nodes: ( ( graph && graph.nodes ) || [] ).concat( liftedNodes ),
+		connections: ( graph && graph.connections ) || [],
+	};
+}
+
 export {
 	uuidv4,
 	parseReteGraph,
@@ -698,6 +741,7 @@ export {
 	createReteNode,
 	createReteConnection,
 	evaluateGraph,
+	buildUnifiedGraph,
 	NODE_TYPES,
 	NODE_DEFAULTS,
 	MATH_OPS,
