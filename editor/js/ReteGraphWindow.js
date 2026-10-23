@@ -18,6 +18,7 @@ import {
 	NODE_TYPES,
 } from './ReteGraph.js';
 import { attachReteRenderer, formatWatchValue } from './ReteGraphRenderer.js';
+import { ScopesPlugin } from './libs/rete/rete-scopes.js';
 import { readPropertyValue, applyPropertyValue, getAnimatablePropertiesForObject } from './SceneTimeline.js';
 import { ensureMidiAccess, readMidi } from './MidiRegistry.js';
 import { ExtrudeMeshFromFont, parseFontBuffer } from './libs/ExtrudeMeshFromFont.js';
@@ -36,6 +37,7 @@ function injectStylesOnce() {
 		.rete-node-description { font-size:11px; color:#999; font-style:italic; }
 		.rete-area-container { position:relative; flex:1; overflow:hidden; background:#2b2b2b; background-image: radial-gradient(#444 1px, transparent 1px); background-size: 20px 20px; }
 		.rete-node { position:absolute; top:0; left:0; min-width:160px; background:#3a3a3a; border:1px solid #555; border-radius:6px; color:#eee; font-size:11px; user-select:none; }
+		.rete-node-scope { background:rgba(58,58,58,0.45); border-style:dashed; border-color:#777; }
 		.rete-node-selected { border-color:#2196F3; }
 		.rete-node-highlighted { border-color:#ffb300; box-shadow:0 0 0 2px rgba(255,179,0,0.5); }
 		.rete-node-header { padding:4px 8px; background:#4a4a4a; border-radius:6px 6px 0 0; font-weight:bold; cursor:grab; display:flex; justify-content:space-between; }
@@ -76,7 +78,7 @@ function ReteGraphWindow( editor ) {
 	const signals = editor.signals;
 
 	let built = false;
-	let nodeEditor, area, connection;
+	let nodeEditor, area, connection, scopes;
 	const graphNodesById = new Map(); // id -> { type, data, position }
 	const watchElements = new Map(); // id -> the 'watch' node's live-readout <span>
 	let rafId = null;
@@ -192,9 +194,14 @@ function ReteGraphWindow( editor ) {
 		nodeEditor = new NodeEditor();
 		area = new AreaPlugin( areaContainer );
 		connection = new ConnectionPlugin();
+		// Lets 'midi-pair-loop'/'group-set' body nodes be visually nested by drag-and-drop
+		// (long-press a node, release over the loop/group-set node to nest it) instead of
+		// tagged via a dropdown - see rete-scopes.js.
+		scopes = new ScopesPlugin( { padding: () => ( { top: 36, left: 14, right: 14, bottom: 14 } ) } );
 
 		nodeEditor.use( area );
 		area.use( connection );
+		area.use( scopes );
 		connection.addPreset( ConnectionPresets.classic.setup() );
 		AreaExtensions.selectableNodes( area, AreaExtensions.selector(), { accumulating: AreaExtensions.accumulateOnCtrl() } );
 
@@ -241,7 +248,10 @@ function ReteGraphWindow( editor ) {
 		( typeDef ? typeDef.inputs : [] ).forEach( ( key ) => { inputs[ key ] = { multipleConnections: false }; } );
 		const outputs = {};
 		( typeDef ? typeDef.outputs : [] ).forEach( ( key ) => { outputs[ key ] = { multipleConnections: true }; } );
-		return { id: graphNode.id, inputs, outputs, selected: false };
+		// parent/width/height back the visual scope-nesting system (rete-scopes.js) - carried
+		// through from a loaded/migrated graph node if present; undefined (auto-sized, no
+		// parent) for a brand new node until it's dragged into (or becomes) a scope.
+		return { id: graphNode.id, inputs, outputs, selected: false, parent: graphNode.parent, width: graphNode.width, height: graphNode.height };
 	}
 
 	async function addNode( type ) {
@@ -322,12 +332,25 @@ function ReteGraphWindow( editor ) {
 		// currently in ReteGraphRenderer's socketElements map - safe/cheap to always do.
 		await new Promise( ( resolve ) => requestAnimationFrame( resolve ) );
 		for ( const id of loadedConnectionIds ) await area.update( 'connection', id );
+
+		// Recompute every scope's box from its CURRENT children now that everything's
+		// loaded - needed both for a graph migrated from the old loop_id tagging (its
+		// loop/group-set node has children for the first time ever, so no persisted
+		// width/height exists yet) and as a cheap correctness check on every normal reopen.
+		const parentIds = new Set( graph.nodes.map( ( n ) => n.parent ).filter( Boolean ) );
+		for ( const id of parentIds ) await scopes.update( id );
 	}
 
 	function persist() {
 		const nodes = nodeEditor.getNodes().map( ( n ) => {
 			const graphNode = graphNodesById.get( n.id );
-			return { id: n.id, type: graphNode.type, data: graphNode.data, position: graphNode.position || [ 0, 0 ] };
+			// parent/width/height are mutated directly on the live rete node `n` by
+			// ScopesPlugin (rete-scopes.js), not on our separate graphNode cache - read them
+			// from `n`, the authoritative source, same as rete.js's own scopes plugin would.
+			return {
+				id: n.id, type: graphNode.type, data: graphNode.data, position: graphNode.position || [ 0, 0 ],
+				parent: n.parent, width: n.width, height: n.height,
+			};
 		} );
 		const connections = nodeEditor.getConnections().map( ( c ) => ( {
 			id: c.id, source: c.source, sourceOutput: c.sourceOutput, target: c.target, targetInput: c.targetInput,

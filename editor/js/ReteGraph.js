@@ -34,13 +34,26 @@ function parseReteGraph( raw ) {
 		if ( ! parsed || ! Array.isArray( parsed.nodes ) || ! Array.isArray( parsed.connections ) ) return null;
 		return {
 			version: Number( parsed.version ) || 1,
-			nodes: parsed.nodes,
+			nodes: migrateLoopIds( parsed.nodes ),
 			connections: parsed.connections,
 		};
 	} catch ( err ) {
 		console.error( 'Failed to parse rete graph JSON:', err );
 		return null;
 	}
+}
+
+// One-time migration: older saved graphs tagged a loop/group-set body node via
+// `data.loop_id` (a dropdown picking the owning loop node's id). The visual scopes
+// system (rete-scopes.js) expresses the same relationship as `node.parent` instead -
+// converts any lingering `loop_id` tags the first time such a graph is loaded, so
+// evaluateGraph()'s body-node lookup only ever needs to check one field going forward.
+function migrateLoopIds( nodes ) {
+	return nodes.map( ( node ) => {
+		if ( ! node.data || ! node.data.loop_id ) return node;
+		const { loop_id, ...data } = node.data;
+		return Object.assign( {}, node, { parent: node.parent || loop_id, data } );
+	} );
 }
 
 function serializeReteGraph( graph ) {
@@ -168,7 +181,7 @@ const NODE_DEFAULTS = {
 	'vector3-decompose': { x: 0, y: 0, z: 0 },
 	color: { hex: '#ffffff' },
 	'property-get': { target_uuid: '', property: 'position.y' },
-	'property-set': { target_uuid: '', property: 'position.y', loop_id: '' },
+	'property-set': { target_uuid: '', property: 'position.y' },
 	'text-set': { target_uuid: '', text: '' },
 	'timeline-track': { target_uuid: '', property: 'position.y', keyframes: [], loop: false },
 	compare: { op: 'gt', a: 0, b: 0 },
@@ -178,14 +191,15 @@ const NODE_DEFAULTS = {
 	random: { mode: 'continuous', min: 0, max: 1, seed: 1, trigger: false },
 	damp: { value: 0, rate: 5 },
 	'audio-analyser': { target_uuid: '' },
-	watch: { loop_id: '' },
+	watch: {},
 	'iterator-index': {},
 	'group-set': { group_uuid: '', property: 'position.y' },
 	'midi-input': { source: 'device', mode: 'note', channel: 0, number: 60 },
 	switch: { condition: false, ifTrue: 1, ifFalse: 0 },
-	'play-sample': { target_uuid: '', loop_id: '' },
+	'play-sample': { target_uuid: '' },
 	'midi-pair-list': { pairs: [] }, // [{ uuid, number }] - wire its 'pairs' output into a 'midi-pair-loop'
 	'iterator-pair': {},
+	'iterator-member': {}, // only varies when evaluated as a nested body node inside a 'group-set' scope
 	'midi-pair-loop': { pairs: [] }, // fallback when 'pairs' input isn't wired
 };
 
@@ -291,7 +305,7 @@ const NODE_TYPES = {
 	},
 	'property-set': {
 		label: 'Set Property',
-		description: 'Writes a value onto a chosen scene object\'s property every frame (wireable target_uuid - leave unwired to use the dropdown).',
+		description: 'Writes a value onto a chosen scene object\'s property every frame (wireable target_uuid - leave unwired to use the dropdown). Nest this inside a Set Group Property node to target its current member automatically.',
 		inputs: [ 'value', 'target_uuid' ],
 		outputs: [],
 		compute: ( data, getInput, context ) => {
@@ -299,7 +313,10 @@ const NODE_TYPES = {
 			// An unwired/orphaned value input (no connection, no data.value) must NOT write
 			// undefined onto the object every frame - leave it untouched instead.
 			if ( value === undefined ) return {};
-			context.applyProperty( getInput( 'target_uuid' ), data.property, value );
+			// Nested inside a 'group-set' scope (see evaluateGraph()) and no explicit
+			// target configured/wired: default to whichever member is currently iterating.
+			const targetUuid = getInput( 'target_uuid' ) || context.iteratorUuid;
+			context.applyProperty( targetUuid, data.property, value );
 			return {};
 		},
 	},
@@ -466,14 +483,17 @@ const NODE_TYPES = {
 		},
 	},
 	// Sink node, like 'property-set' but targets EVERY member of a chosen group - see the
-	// special-cased handling in evaluateGraph() below, which re-runs this node's 'value'
-	// input chain once per member with a fresh iteratorIndex/iteratorCount in context (so
-	// an upstream 'iterator-index' node can vary the result per member, e.g. to arrange
-	// pre-placed duplicate objects into a grid/circle/line). Does NOT create or destroy
-	// objects - only existing group members already present in the scene are affected.
+	// special-cased handling in evaluateGraph() below. Two modes, auto-detected: nest one
+	// or more 'property-set'/'play-sample'/'watch' nodes inside this one (drag-and-drop,
+	// see rete-scopes.js) to re-evaluate THEM once per member (their own target_uuid
+	// defaults to the current member when left unwired/blank - wire an 'iterator-member'
+	// node in for explicit per-member index/count/uuid access); with no nested nodes, falls
+	// back to the original single wired 'value' input + this node's own `data.property`,
+	// for backward compatibility with graphs authored before nesting existed. Does NOT
+	// create or destroy objects - only existing group members already in the scene are hit.
 	'group-set': {
 		label: 'Set Group Property',
-		description: 'Writes a value onto every member of a chosen group, each frame (wire Iterator Index upstream for per-member variation).',
+		description: 'Writes onto every member of a chosen group, each frame - nest Set Property/Play Sample/Watch nodes inside this one to define what happens per member (their target_uuid defaults to the current member), or wire a single "value" here for the original one-property-per-member behavior.',
 		inputs: [ 'value' ],
 		outputs: [],
 		// Never actually invoked by evaluateGraph() - kept as a safe no-op in case anything
@@ -506,7 +526,7 @@ const NODE_TYPES = {
 	// the original Foundscape SoundshapeModel.tsx/Sound.tsx thresholds exactly.
 	'play-sample': {
 		label: 'Play Sample',
-		description: 'Plays a one-shot velocity-tiered sample on a scene object each time trigger rises (wireable target_uuid - e.g. from an Iterator Pair).',
+		description: 'Plays a one-shot velocity-tiered sample on a scene object each time trigger rises (wireable target_uuid - e.g. from an Iterator Pair/Member). Nest this inside a Set Group Property node to target its current member automatically.',
 		inputs: [ 'trigger', 'velocity', 'target_uuid' ],
 		outputs: [],
 		compute: ( data, getInput, context ) => {
@@ -515,7 +535,8 @@ const NODE_TYPES = {
 			const rising = triggerValue && ! state._prevTrigger;
 			state._prevTrigger = triggerValue;
 			if ( rising && context.playSample ) {
-				context.playSample( getInput( 'target_uuid' ), Number( getInput( 'velocity' ) ) || 0 );
+				const targetUuid = getInput( 'target_uuid' ) || context.iteratorUuid;
+				context.playSample( targetUuid, Number( getInput( 'velocity' ) ) || 0 );
 			}
 			return {};
 		},
@@ -545,17 +566,35 @@ const NODE_TYPES = {
 			return { uuid: context.iteratorUuid || '', number: Number( context.iteratorNumber ) || 0, index, count };
 		},
 	},
-	// The actual "for each pair" loop. Any 'property-set'/'play-sample'/'watch' node whose
-	// `data.loop_id` equals THIS node's id is considered part of its body - excluded from
-	// evaluateGraph()'s normal top-level dispatch (see below) and instead re-evaluated
-	// once per pair from `pairs`, with a fresh per-iteration cache/context so each pair
-	// gets independent state (see getIterationState) and sees its own uuid/number via any
-	// wired-in 'iterator-pair' node. Upstream nodes feeding the body (midi-input, impulse,
-	// damp, compare, switch, color, ...) do NOT need `loop_id` set themselves - they're
-	// pulled naturally by the body sink's own input chain, same as any normal wiring.
+	// Source node reading the current member's uuid/index/count injected by a 'group-set'
+	// node's nested-body evaluation (see evaluateGraph() below) - mirrors 'iterator-pair'
+	// but for group members. Outside that loop it reads a blank uuid/index 0 of 1. Wiring
+	// its 'uuid' output into a nested sink's target_uuid is only needed for explicit
+	// per-member index/count-driven logic - a nested sink's target_uuid already defaults
+	// to the current member automatically when left unwired/blank.
+	'iterator-member': {
+		label: 'Iterator Member',
+		description: 'Current group member (uuid, index, count, t 0-1) - only varies per-member inside a Set Group Property node\'s nested body.',
+		inputs: [],
+		outputs: [ 'uuid', 'index', 'count', 't' ],
+		compute: ( data, getInput, context ) => {
+			const count = Math.max( 1, Number( context.iteratorCount ) || 1 );
+			const index = Number( context.iteratorIndex ) || 0;
+			return { uuid: context.iteratorUuid || '', index, count, t: count > 1 ? index / ( count - 1 ) : 0 };
+		},
+	},
+	// The actual "for each pair" loop. Any 'property-set'/'play-sample'/'watch' node
+	// nested inside it (node.parent === this node's id - see rete-scopes.js) is
+	// considered part of its body - excluded from evaluateGraph()'s normal top-level
+	// dispatch (see below) and instead re-evaluated once per pair from `pairs`, with a
+	// fresh per-iteration cache/context so each pair gets independent state (see
+	// getIterationState) and sees its own uuid/number via any wired-in 'iterator-pair'
+	// node. Upstream nodes feeding the body (midi-input, impulse, damp, compare, switch,
+	// color, ...) do NOT need to be nested themselves - they're pulled naturally by the
+	// body sink's own input chain, same as any normal wiring.
 	'midi-pair-loop': {
 		label: 'MIDI Pair Loop',
-		description: 'For each pair from "pairs" (wire from a MIDI Pair List), runs every node tagged "Loop: <this>" once, with that pair\'s object/note available via a wired Iterator Pair node.',
+		description: 'For each pair from "pairs" (wire from a MIDI Pair List), runs every node nested inside this one once, with that pair\'s object/note available via a wired Iterator Pair node.',
 		inputs: [ 'pairs' ],
 		outputs: [],
 		// Never actually invoked by evaluateGraph() - see the special-cased dispatch below.
@@ -686,25 +725,47 @@ function evaluateGraph( graph, context ) {
 	}
 
 	graph.nodes.forEach( ( n ) => {
-		// Nodes tagged with `data.loop_id` only run inside their owning 'midi-pair-loop's
-		// per-pair iterations (see below) - never at the normal top level, even if they're
-		// themselves a sink type.
-		if ( n.data && n.data.loop_id ) return;
+		// Nodes nested inside a scope (node.parent set - see rete-scopes.js) only run as
+		// part of their owning loop/group-set's own per-iteration evaluation below -
+		// never at the normal top level, even if they're themselves a sink type.
+		if ( n.parent ) return;
 
 		if ( n.type === 'property-set' || n.type === 'watch' || n.type === 'play-sample' || n.type === 'text-set' || n.type === 'timeline-track' ) {
 			computeNode( n.id );
 		} else if ( n.type === 'group-set' ) {
 			const members = context.getGroupMembers ? context.getGroupMembers( n.data.group_uuid ) : [];
-			members.forEach( ( uuid, index ) => {
-				const memberContext = Object.assign( {}, context, { iteratorIndex: index, iteratorCount: members.length } );
-				const value = evaluateInputWithContext( graph, n.id, 'value', memberContext );
-				if ( value === undefined ) return;
-				context.applyProperty( uuid, n.data.property, value );
-			} );
+			const bodyNodes = graph.nodes.filter( ( bn ) => bn.parent === n.id );
+			if ( bodyNodes.length ) {
+				// New pattern: re-evaluate each nested sink once per member, with that
+				// member's uuid available via context (nested property-set/play-sample
+				// nodes default their own target_uuid to it when left unwired/blank).
+				members.forEach( ( uuid, index ) => {
+					const iterationContext = Object.assign( {}, context, {
+						iteratorUuid: uuid,
+						iteratorIndex: index,
+						iteratorCount: members.length,
+					} );
+					bodyNodes.forEach( ( bodyNode ) => {
+						if ( bodyNode.type === 'property-set' || bodyNode.type === 'play-sample' || bodyNode.type === 'watch' ) {
+							evaluateNodeWithContext( graph, bodyNode.id, iterationContext );
+						}
+					} );
+				} );
+			} else {
+				// Legacy pattern (no nested body nodes): one wired 'value' input applied
+				// to this node's own `data.property` on every member - unchanged since
+				// before nesting existed, kept for graphs authored before this feature.
+				members.forEach( ( uuid, index ) => {
+					const memberContext = Object.assign( {}, context, { iteratorIndex: index, iteratorCount: members.length } );
+					const value = evaluateInputWithContext( graph, n.id, 'value', memberContext );
+					if ( value === undefined ) return;
+					context.applyProperty( uuid, n.data.property, value );
+				} );
+			}
 		} else if ( n.type === 'midi-pair-loop' ) {
 			const wiredPairs = evaluateInputWithContext( graph, n.id, 'pairs', context );
 			const pairs = Array.isArray( wiredPairs ) ? wiredPairs : ( Array.isArray( n.data.pairs ) ? n.data.pairs : [] );
-			const bodyNodes = graph.nodes.filter( ( bn ) => bn.data && bn.data.loop_id === n.id );
+			const bodyNodes = graph.nodes.filter( ( bn ) => bn.parent === n.id );
 			pairs.forEach( ( pair, index ) => {
 				if ( ! pair || ! pair.uuid ) return;
 				const iterationContext = Object.assign( {}, context, {

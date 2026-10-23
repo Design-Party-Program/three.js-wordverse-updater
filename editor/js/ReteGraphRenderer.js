@@ -59,6 +59,16 @@ function renderNodeBody( container, reteNode, area, hooks ) {
 	container.classList.toggle( 'rete-node-selected', !! reteNode.selected );
 	container.classList.toggle( 'rete-node-highlighted', hooks.isHighlighted( reteNode ) );
 
+	// A node that has ever been used as a scope (see ScopesPlugin/rete-scopes.js) carries
+	// an explicit width/height - applied here as its real box size, with its own header/
+	// controls rendered normally at the top and the rest left empty for its (separately
+	// positioned, not DOM-nested) children to visually sit inside. Stays explicitly sized
+	// even at 0 current children, matching the official scopes plugin's own behavior.
+	const isScope = node && node.width !== undefined && node.height !== undefined;
+	container.classList.toggle( 'rete-node-scope', !! isScope );
+	container.style.width = isScope ? node.width + 'px' : '';
+	container.style.height = isScope ? node.height + 'px' : '';
+
 	const typeDef = node && NODE_TYPES[ node.type ];
 	if ( ! typeDef ) {
 		container.appendChild( el( 'div', 'rete-node-header', ( node ? node.type : id ) + ' (unknown)' ) );
@@ -157,32 +167,17 @@ function select( options, value, onChange ) {
 	return sel;
 }
 
-// Lets a 'property-set'/'play-sample'/'watch' node declare "I'm part of this loop's
-// body" (data.loop_id) - the same dropdown-picker pattern as target_uuid/group_uuid
-// elsewhere in this file, just picking a 'midi-pair-loop' node instead of a scene object.
-function renderLoopPicker( body, node, hooks ) {
+// Shows which scope (loop/group-set node) a 'property-set'/'play-sample'/'watch' node
+// is currently nested inside (node.parent) - read-only, since assignment now happens by
+// long-pressing the node and dropping it onto the target (see rete-scopes.js), not a
+// dropdown. Shows nothing for a top-level (unparented) node.
+function renderParentIndicator( body, node, hooks ) {
+	if ( ! node.parent ) return;
+	const parentNode = hooks.getAllNodes().find( ( n ) => n.id === node.parent );
+	const parentTypeDef = parentNode && NODE_TYPES[ parentNode.type ];
+	const label = parentTypeDef ? parentTypeDef.label : node.parent.slice( 0, 8 );
 	const row = el( 'div', 'rete-node-controls' );
-	row.appendChild( el( 'span', 'rete-socket-label', 'Loop: ' ) );
-
-	const loopSelect = document.createElement( 'select' );
-	loopSelect.className = 'rete-inline-select';
-	const none = document.createElement( 'option' );
-	none.value = '';
-	none.textContent = '(none - run at top level)';
-	loopSelect.appendChild( none );
-	hooks.getAllNodes().filter( ( n ) => n.type === 'midi-pair-loop' ).forEach( ( loopNode ) => {
-		const option = document.createElement( 'option' );
-		option.value = loopNode.id;
-		option.textContent = `Loop ${ loopNode.id.slice( 0, 8 ) }`;
-		if ( loopNode.id === node.data.loop_id ) option.selected = true;
-		loopSelect.appendChild( option );
-	} );
-	loopSelect.addEventListener( 'pointerdown', ( e ) => e.stopPropagation() );
-	loopSelect.addEventListener( 'change', () => {
-		node.data.loop_id = loopSelect.value;
-		hooks.onNodeDataChanged( node );
-	} );
-	row.appendChild( loopSelect );
+	row.appendChild( el( 'span', 'rete-node-description', `\u21b3 nested in: ${ label }` ) );
 	body.appendChild( row );
 }
 
@@ -241,7 +236,7 @@ function renderNodeControls( body, node, hooks, area ) {
 		row.appendChild( display );
 		body.appendChild( row );
 		hooks.registerWatchElement( node.id, display );
-		renderLoopPicker( body, node, hooks );
+		renderParentIndicator( body, node, hooks );
 	}
 
 	if ( node.type === 'color' ) {
@@ -299,7 +294,7 @@ function renderNodeControls( body, node, hooks, area ) {
 		}
 		renderPropertySelect();
 
-		if ( node.type === 'property-set' ) renderLoopPicker( body, node, hooks );
+		if ( node.type === 'property-set' ) renderParentIndicator( body, node, hooks );
 	}
 
 	if ( node.type === 'text-set' ) {
@@ -408,6 +403,13 @@ function renderNodeControls( body, node, hooks, area ) {
 			propertyContainer.appendChild( propSelect );
 		}
 		renderPropertySelect();
+
+		const bodyCount = hooks.getAllNodes().filter( ( n ) => n.parent === node.id ).length;
+		const modeRow = el( 'div', 'rete-node-controls' );
+		modeRow.appendChild( el( 'span', 'rete-node-description', bodyCount
+			? `${ bodyCount } nested node${ bodyCount === 1 ? '' : 's' } define the per-member body (its own "value"/"property" above are unused in this mode).`
+			: 'No nested nodes - using the "value" input + "property" above for every member (long-press + drop a Set Property/Play Sample/Watch node onto this one to switch to per-member nesting instead).' ) );
+		body.appendChild( modeRow );
 	}
 
 	if ( node.type === 'midi-input' ) {
@@ -464,7 +466,7 @@ function renderNodeControls( body, node, hooks, area ) {
 		row.appendChild( targetSelect );
 		row.appendChild( el( 'span', 'rete-node-description', '(no sound in editor preview)' ) );
 		body.appendChild( row );
-		renderLoopPicker( body, node, hooks );
+		renderParentIndicator( body, node, hooks );
 	}
 
 	if ( node.type === 'timeline-track' ) {
@@ -742,9 +744,9 @@ function renderNodeControls( body, node, hooks, area ) {
 
 	if ( node.type === 'midi-pair-loop' ) {
 		const row = el( 'div', 'rete-node-controls' );
-		const bodyCount = hooks.getAllNodes().filter( ( n ) => n.data && n.data.loop_id === node.id ).length;
+		const bodyCount = hooks.getAllNodes().filter( ( n ) => n.parent === node.id ).length;
 		row.appendChild( el( 'span', 'rete-node-description',
-			`${ bodyCount } node${ bodyCount === 1 ? '' : 's' } tagged to this loop (set via their own "Loop" picker).` ) );
+			`${ bodyCount } node${ bodyCount === 1 ? '' : 's' } nested inside this loop (long-press + drop a node onto this one to nest it).` ) );
 		body.appendChild( row );
 	}
 }

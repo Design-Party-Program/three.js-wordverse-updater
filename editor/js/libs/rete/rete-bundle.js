@@ -3752,10 +3752,12 @@ var ConnectionPlugin = /* @__PURE__ */ function(_Scope) {
 export {
   index as AreaExtensions,
   AreaPlugin,
+  BaseAreaPlugin,
   classic as ClassicPreset,
   ConnectionPlugin,
   index2 as ConnectionPresets,
-  NodeEditor
+  NodeEditor,
+  Scope
 };
 /*! Bundled license information:
 

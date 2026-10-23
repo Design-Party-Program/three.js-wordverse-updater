@@ -58,6 +58,7 @@
 		// evaluateGraph() loop (nothing to drive), and Save is an explicit button that
 		// PATCHes ONLY the `rete_graph` ACF field - it does not touch models/cameras/etc.
 		import { NodeEditor, AreaPlugin, AreaExtensions, ConnectionPlugin, ConnectionPresets } from './js/libs/rete/rete-bundle.js';
+		import { ScopesPlugin } from './js/libs/rete/rete-scopes.js';
 		import { createReteNode, parseReteGraph, NODE_TYPES } from './js/ReteGraph.js';
 		import { attachReteRenderer } from './js/ReteGraphRenderer.js';
 
@@ -152,8 +153,12 @@
 		const nodeEditor = new NodeEditor();
 		const area = new AreaPlugin( areaContainer );
 		const connection = new ConnectionPlugin();
+		// Lets 'midi-pair-loop'/'group-set' body nodes be visually nested by drag-and-drop
+		// instead of tagged via a dropdown - see rete-scopes.js.
+		const scopes = new ScopesPlugin( { padding: () => ( { top: 36, left: 14, right: 14, bottom: 14 } ) } );
 		nodeEditor.use( area );
 		area.use( connection );
+		area.use( scopes );
 		connection.addPreset( ConnectionPresets.classic.setup() );
 		AreaExtensions.selectableNodes( area, AreaExtensions.selector(), { accumulating: AreaExtensions.accumulateOnCtrl() } );
 
@@ -166,7 +171,7 @@
 			( typeDef ? typeDef.inputs : [] ).forEach( ( key ) => { inputs[ key ] = { multipleConnections: false }; } );
 			const outputs = {};
 			( typeDef ? typeDef.outputs : [] ).forEach( ( key ) => { outputs[ key ] = { multipleConnections: true }; } );
-			return { id: graphNode.id, inputs, outputs, selected: false };
+			return { id: graphNode.id, inputs, outputs, selected: false, parent: graphNode.parent, width: graphNode.width, height: graphNode.height };
 		}
 
 		let persistScheduled = false;
@@ -182,7 +187,10 @@
 		function syncGraphFromEditor() {
 			const nodes = nodeEditor.getNodes().map( ( n ) => {
 				const graphNode = graphNodesById.get( n.id );
-				return { id: n.id, type: graphNode.type, data: graphNode.data, position: graphNode.position || [ 0, 0 ] };
+				return {
+					id: n.id, type: graphNode.type, data: graphNode.data, position: graphNode.position || [ 0, 0 ],
+					parent: n.parent, width: n.width, height: n.height,
+				};
 			} );
 			const connections = nodeEditor.getConnections().map( ( c ) => ( {
 				id: c.id, source: c.source, sourceOutput: c.sourceOutput, target: c.target, targetInput: c.targetInput,
@@ -268,6 +276,12 @@
 
 			await new Promise( ( resolve ) => requestAnimationFrame( resolve ) );
 			for ( const id of loadedConnectionIds ) await area.update( 'connection', id );
+
+			// See the matching call in ReteGraphWindow.js's loadGraph() - sizes any scope
+			// (loop/group-set node) from its current children, needed both right after a
+			// loop_id -> parent migration and as a correctness check on every normal load.
+			const parentIds = new Set( graph.nodes.map( ( n ) => n.parent ).filter( Boolean ) );
+			for ( const id of parentIds ) await scopes.update( id );
 
 			currentGraph = graph;
 		}
